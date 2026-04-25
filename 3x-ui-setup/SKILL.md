@@ -1,41 +1,41 @@
 ---
 name: 3x-ui-setup
-description: Complete VPN server setup from scratch. Takes a fresh VPS (IP + root + password from hosting provider) through full server hardening and 3x-ui (Xray proxy panel) installation with VLESS Reality or VLESS TLS. Guides user through connecting via Hiddify client. Use when user mentions v2ray, xray, vless, 3x-ui, proxy server, vpn server, or wants to set up encrypted proxy access on a VPS. Designed for beginners — hand-holds through every step.
+description: "Complete VPN server setup from scratch. Takes a fresh VPS (IP + root + password from hosting provider) through full server hardening and 3x-ui (Xray proxy panel) installation with VLESS Reality or VLESS TLS. Guides user through connecting via Hiddify client. Use when user mentions v2ray, xray, vless, 3x-ui, proxy server, vpn server, or wants to set up encrypted proxy access on a VPS. Designed for beginners -- hand-holds through every step."
 allowed-tools: Bash,Read,Write,Edit
 ---
 
 # VPN Server Setup (3x-ui)
 
-Complete setup: fresh VPS from provider → secured server → working VPN with Hiddify client.
+Complete setup: fresh VPS from provider -> secured server -> working VPN with Hiddify client.
 
 ## Workflow Overview
 
 ```
-ЧАСТЬ 1: Настройка сервера
+PART 1: Server Hardening
   Fresh VPS (IP + root + password)
-    → Determine execution mode (remote or local)
-    → Generate SSH key / setup access
-    → Connect as root
-    → Update system
-    → Create non-root user + sudo
-    → Install SSH key
-    → TEST new user login (critical!)
-    → Firewall (ufw)
-    → Kernel hardening
-    → Time sync + packages
-    → Configure local ~/.ssh/config
-    → ✅ Server secured
+    -> Determine execution mode (remote or local)
+    -> Generate SSH key / setup access
+    -> Connect as root
+    -> Update system
+    -> Create non-root user + sudo
+    -> Install SSH key
+    -> TEST new user login (critical!)
+    -> Firewall (ufw)
+    -> Kernel hardening
+    -> Time sync + packages
+    -> Configure local ~/.ssh/config
+    -> Server secured
 
-ЧАСТЬ 2: Установка VPN (3x-ui)
-    → Install 3x-ui panel
-    → Enable BBR (TCP optimization)
-    → Disable ICMP (stealth)
-    → Reality: scanner → create inbound → get link
-    → Install Hiddify client
-    → Verify connection
-    → Generate guide file (credentials + instructions)
-    → Install fail2ban + lock SSH (after key verified)
-    → ✅ VPN working
+PART 2: VPN Installation (3x-ui)
+    -> Install 3x-ui panel
+    -> Enable BBR (TCP optimization)
+    -> Disable ICMP (stealth)
+    -> Reality: scanner -> create inbound -> get link
+    -> Install Hiddify client
+    -> Verify connection
+    -> Generate guide file (credentials + instructions)
+    -> Install fail2ban + lock SSH (after key verified)
+    -> VPN working
 ```
 
 ---
@@ -48,9 +48,9 @@ Secure a fresh server from provider credentials to production-ready state.
 
 First, determine **execution mode**:
 
-**Где запущен Claude Code?**
-- **На локальном компьютере** (Remote mode) -- настраиваем удалённый сервер через SSH
-- **На самом сервере** (Local mode) -- настраиваем этот же сервер напрямую
+**Where is Claude Code running?**
+- **On the user's local computer** (Remote mode) -- configuring a remote server via SSH
+- **On the server itself** (Local mode) -- configuring this server directly
 
 ### Remote Mode -- ASK the user for:
 
@@ -98,7 +98,7 @@ For **Local mode**, adapt as follows:
 | Part 2 | `ssh {nickname} "sudo ..."` | `sudo ...` directly (no SSH prefix) |
 | Step 17A | Scanner via `ssh {nickname} '...'` | Scanner runs directly (no SSH wrapper) -- see Step 17A for both commands |
 | Panel access | Via SSH tunnel | Direct: `https://127.0.0.1:{panel_port}/{web_base_path}` |
-| Step 22 | Generate guide + fail2ban + lock SSH | Generate guide → SCP download → SSH key setup → fail2ban + lock SSH |
+| Step 22 | Generate guide + fail2ban + lock SSH | Generate guide -> SCP download -> SSH key setup -> fail2ban + lock SSH |
 
 **IMPORTANT:** In both modes, the end result is the same -- user has SSH key access to the server from their local computer via `ssh {nickname}`, password auth disabled, root login disabled.
 
@@ -193,9 +193,9 @@ cat /home/{username}/.ssh/authorized_keys
 chown -R {username}:{username} /home/{username}/.ssh
 ```
 
-## Step 7: Lock Down SSH — DEFERRED
+## Step 7: Lock Down SSH -- DEFERRED
 
-**Оба режима: ПРОПУСКАЕМ.** Блокировка SSH и установка fail2ban выполняются в самом конце (Step 22), после того как SSH-ключ проверен. Это предотвращает случайную блокировку доступа во время настройки.
+**Both modes: SKIP.** SSH lockdown and fail2ban installation are performed at the very end (Step 22), after the SSH key is verified. This prevents accidental lockout during setup.
 
 ## Step 8: Firewall
 
@@ -210,9 +210,9 @@ sudo ufw --force enable
 sudo ufw status
 ```
 
-## Step 9: fail2ban — DEFERRED
+## Step 9: fail2ban -- DEFERRED
 
-**Пропущен.** fail2ban устанавливается в конце настройки (Step 22) вместе с блокировкой SSH, чтобы не заблокировать пользователя во время настройки.
+**Skipped.** fail2ban is installed at the end of setup (Step 22) together with SSH lockdown, to avoid locking out the user during configuration.
 
 ## Step 10: Kernel Hardening
 
@@ -256,7 +256,7 @@ Host {nickname}
 EOF
 ```
 
-Tell user: **Теперь подключайся командой `ssh {nickname}` -- без пароля и IP.**
+Tell user: **You can now connect with `ssh {nickname}` -- no password or IP needed.**
 
 ## Step 13: Final Verification
 
@@ -270,9 +270,9 @@ sudo sysctl net.ipv4.conf.all.rp_filter
 
 Expected: ufw active, rp_filter = 1.
 
-**Note:** SSH lockdown и fail2ban проверяются в конце (Step 22) после подтверждения работы SSH-ключа.
+**Note:** SSH lockdown and fail2ban are verified at the end (Step 22) after SSH key access is confirmed.
 
-**Часть 1 завершена. Базовая настройка сервера готова. Переходим к установке VPN.**
+**Part 1 complete. Basic server hardening is done. Proceeding to VPN installation.**
 
 ---
 
@@ -301,12 +301,12 @@ The `echo 'n'` answers "no" to port customization prompt -- a random port and cr
 Extract and save these values. Show them to the user:
 
 ```
-Данные панели 3x-ui (СОХРАНИ!):
+3x-ui panel credentials (SAVE THESE!):
   Username: {panel_username}
   Password: {panel_password}
   Port:     {panel_port}
   Path:     {web_base_path}
-  URL:      https://127.0.0.1:{panel_port}/{web_base_path} (через SSH-туннель)
+  URL:      https://127.0.0.1:{panel_port}/{web_base_path} (via SSH tunnel)
 ```
 
 Verify 3x-ui is running:
@@ -383,7 +383,7 @@ ssh {nickname} 'ARCH=$(dpkg --print-architecture); case "$ARCH" in amd64) SA="64
 ARCH=$(dpkg --print-architecture); case "$ARCH" in amd64) SA="64";; arm64|aarch64) SA="arm64-v8a";; *) SA="$ARCH";; esac && curl -sL "https://github.com/XTLS/RealiTLScanner/releases/latest/download/RealiTLScanner-linux-${SA}" -o /tmp/scanner && chmod +x /tmp/scanner && file /tmp/scanner | grep -q ELF || { echo "ERROR: scanner binary not valid for this architecture"; exit 1; }; MY_IP=$(curl -4 -s ifconfig.me); SUBNET=$(echo $MY_IP | sed "s/\.[0-9]*$/.0\/24/"); echo "Scanning subnet: $SUBNET"; timeout 120 /tmp/scanner --addr "$SUBNET" 2>&1 | head -80
 ```
 
-**Note:** The commands are identical — Local mode simply runs without the `ssh {nickname}` wrapper since Claude Code is already on the VPS. GitHub releases use non-standard arch names (`64` instead of `amd64`, `arm64-v8a` instead of `arm64`). The `case` block maps them. The `file | grep ELF` check ensures the download is a real binary, not a 404 HTML page. Timeout is 120s because scanning 254 IPs takes longer than a single IP.
+**Note:** The commands are identical -- Local mode simply runs without the `ssh {nickname}` wrapper since Claude Code is already on the VPS. GitHub releases use non-standard arch names (`64` instead of `amd64`, `arm64-v8a` instead of `arm64`). The `case` block maps them. The `file | grep ELF` check ensures the download is a real binary, not a 404 HTML page. Timeout is 120s because scanning 254 IPs takes longer than a single IP.
 
 ### Choosing the best SNI from scan results
 
@@ -531,12 +531,12 @@ for inb in data.get(\"obj\", []):
 **IMPORTANT: Terminal line-wrap fix.** Long VLESS links break when copied from terminal. ALWAYS provide the link in TWO formats:
 
 1. The raw link (for reference)
-2. A ready-to-copy block with LLM cleanup prompt:
+2. A ready-to-copy block with cleanup prompt:
 
 ~~~
-Скопируй всё ниже и вставь в любой LLM (ChatGPT, Claude) чтобы получить чистую ссылку:
+Copy everything below and paste into any LLM (ChatGPT, Claude) to get a clean link:
 
-Убери все переносы строк и лишние пробелы из этой ссылки, выдай одной строкой:
+Remove all line breaks and extra spaces from this link, output as a single line:
 
 {VLESS_LINK}
 ~~~
@@ -547,7 +547,7 @@ Also save the link to a file for easy access:
 ssh {nickname} "echo '{VLESS_LINK}' > ~/vpn-link.txt"
 ```
 
-Tell the user: **Ссылка также сохранена в файл ~/vpn-link.txt**
+Tell the user: **The link is also saved to ~/vpn-link.txt on the server.**
 
 Cleanup session cookie:
 ```bash
@@ -559,21 +559,21 @@ ssh {nickname} "rm -f /tmp/3x-cookie"
 Tell the user:
 
 ```
-Теперь установи клиент Hiddify на своё устройство:
+Now install the Hiddify client on your device:
 
-Android:  Google Play -> "Hiddify" или https://github.com/hiddify/hiddify-app/releases
+Android:  Google Play -> "Hiddify" or https://github.com/hiddify/hiddify-app/releases
 iOS:      App Store -> "Hiddify"
-Windows:  https://github.com/hiddify/hiddify-app/releases (скачай .exe)
-macOS:    https://github.com/hiddify/hiddify-app/releases (скачай .dmg)
-Linux:    https://github.com/hiddify/hiddify-app/releases (.deb или .AppImage)
+Windows:  https://github.com/hiddify/hiddify-app/releases (download .exe)
+macOS:    https://github.com/hiddify/hiddify-app/releases (download .dmg)
+Linux:    https://github.com/hiddify/hiddify-app/releases (.deb or .AppImage)
 
-После установки:
-1. Открой Hiddify
-2. Нажми "+" или "Add Profile"
-3. Выбери "Add from clipboard" (ссылка уже скопирована)
-4. Или отсканируй QR-код (я могу его показать)
-5. Нажми кнопку подключения (большая кнопка в центре)
-6. Готово! Проверь IP на сайте: https://2ip.ru
+After installing:
+1. Open Hiddify
+2. Tap "+" or "Add Profile"
+3. Choose "Add from clipboard" (the link is already copied)
+4. Or scan the QR code (I can show it)
+5. Tap the connect button (large button in the center)
+6. Done! Check your IP at: https://2ip.ru
 ```
 
 ## Step 21: Verify Connection Works
@@ -594,9 +594,9 @@ This step generates a comprehensive guide file with all credentials and instruct
 
 Use the **Write tool** to create `~/vpn-{nickname}-guide.md` on the user's local machine. Use the **Guide File Template** below, substituting all `{variables}` with actual values.
 
-Tell user: **Методичка сохранена в ~/vpn-{nickname}-guide.md — там все пароли, доступы и инструкции.**
+Tell user: **Guide saved to ~/vpn-{nickname}-guide.md -- all passwords, access details, and instructions in one file.**
 
-**22R-2: Final lockdown — fail2ban + SSH**
+**22R-2: Final lockdown -- fail2ban + SSH**
 
 Verify SSH key access works:
 ```bash
@@ -644,14 +644,14 @@ Use the **Write tool** to create `/home/{username}/vpn-guide.md` on the server. 
 Tell the user:
 
 ```
-Методичка готова! Скачай её на свой компьютер.
-Открой НОВЫЙ терминал на своём ноутбуке и выполни:
+The guide is ready! Download it to your computer.
+Open a NEW terminal on your laptop and run:
 
 scp {username}@{SERVER_IP}:~/vpn-guide.md ./
 
-Пароль: {sudo_password}
+Password: {sudo_password}
 
-Файл сохранится в текущую папку. Открой его -- там все пароли и инструкции.
+The file will be saved to the current folder. Open it -- all passwords and instructions are inside.
 ```
 
 **Fallback:** If SCP doesn't work (Windows without OpenSSH, network issues), show the full guide content directly in chat.
@@ -661,16 +661,16 @@ scp {username}@{SERVER_IP}:~/vpn-guide.md ./
 Tell the user:
 
 ```
-Теперь создай SSH-ключ на своём компьютере.
-Есть два варианта:
+Now create an SSH key on your computer.
+Two options:
 
-Вариант А: Следуй инструкциям из раздела "SSH Key Setup" в методичке.
+Option A: Follow the instructions in the "SSH Key Setup" section of the guide.
 
-Вариант Б (автоматический): Установи Claude Code на ноутбуке
-  (https://claude.ai/download) и скинь ему файл vpn-guide.md --
-  он сам всё настроит по инструкциям из раздела "Instructions for Claude Code".
+Option B (automated): Install Claude Code on your laptop
+  (https://claude.ai/download) and give it the vpn-guide.md file --
+  it will set everything up automatically using the "Instructions for Claude Code" section.
 
-После создания ключа отправь публичный ключ на сервер (следующий шаг).
+After creating the key, send the public key to the server (next step).
 ```
 
 #### 22L-4: User sends public key to server via SCP
@@ -678,11 +678,11 @@ Tell the user:
 Tell the user:
 
 ```
-Отправь публичный ключ на сервер (из терминала на ноутбуке):
+Send the public key to the server (from your laptop terminal):
 
 scp ~/.ssh/{nickname}_key.pub {username}@{SERVER_IP}:~/
 
-Пароль: {sudo_password}
+Password: {sudo_password}
 ```
 
 Wait for user confirmation before proceeding.
@@ -700,15 +700,15 @@ rm -f /home/{username}/{nickname}_key.pub
 
 Tell user to test from their laptop:
 ```
-Проверь подключение с ноутбука:
+Test the connection from your laptop:
 ssh -i ~/.ssh/{nickname}_key {username}@{SERVER_IP}
 
-Должно подключиться без пароля.
+It should connect without a password.
 ```
 
 **Wait for user confirmation that SSH key works before proceeding!**
 
-#### 22L-6: Final lockdown — fail2ban + SSH
+#### 22L-6: Final lockdown -- fail2ban + SSH
 
 **Only after user confirms key-based login works!**
 
@@ -750,9 +750,9 @@ Expected: `PermitRootLogin no`, `PasswordAuthentication no`, fail2ban active.
 
 Tell user to verify SSH still works from laptop:
 ```
-Проверь, что SSH-ключ всё ещё работает:
+Verify that SSH key still works:
 ssh {nickname}
-Если подключился — всё настроено!
+If it connects -- everything is configured!
 ```
 
 #### 22L-7: User configures SSH config
@@ -760,7 +760,7 @@ ssh {nickname}
 Tell the user:
 
 ```
-Последний шаг! Добавь на ноутбуке в файл ~/.ssh/config:
+Last step! Add to ~/.ssh/config on your laptop:
 
 Host {nickname}
     HostName {SERVER_IP}
@@ -768,7 +768,7 @@ Host {nickname}
     IdentityFile ~/.ssh/{nickname}_key
     IdentitiesOnly yes
 
-Теперь подключайся просто: ssh {nickname}
+Now connect with just: ssh {nickname}
 ```
 
 #### 22L-8: Delete guide file from server
@@ -777,7 +777,7 @@ Host {nickname}
 rm -f /home/{username}/vpn-guide.md
 ```
 
-Tell user: **Методичка удалена с сервера. Убедись, что она сохранена на твоём компьютере.**
+Tell user: **Guide deleted from server. Make sure it's saved on your computer.**
 
 ---
 
@@ -786,65 +786,65 @@ Tell user: **Методичка удалена с сервера. Убедись
 Generate this file using the **Write tool**, substituting all `{variables}` with actual values collected during setup.
 
 ~~~markdown
-# Методичка VPN-сервера — {nickname}
+# VPN Server Guide -- {nickname}
 
-Дата создания: {current_date}
+Created: {current_date}
 
-## 1. Подключение к серверу
+## 1. Server Connection
 
-| Параметр | Значение |
-|----------|----------|
+| Parameter | Value |
+|-----------|-------|
 | IP | `{SERVER_IP}` |
-| Пользователь | `{username}` |
-| Пароль sudo | `{sudo_password}` |
-| SSH-ключ | `~/.ssh/{nickname}_key` |
-| Быстрое подключение | `ssh {nickname}` |
+| User | `{username}` |
+| Sudo password | `{sudo_password}` |
+| SSH key | `~/.ssh/{nickname}_key` |
+| Quick connect | `ssh {nickname}` |
 
-## 2. Панель 3x-ui
+## 2. 3x-ui Panel
 
-| Параметр | Значение |
-|----------|----------|
+| Parameter | Value |
+|-----------|-------|
 | URL | `https://127.0.0.1:{panel_port}/{web_base_path}` |
-| Логин | `{panel_username}` |
-| Пароль | `{panel_password}` |
+| Login | `{panel_username}` |
+| Password | `{panel_password}` |
 
-Доступ через SSH-туннель:
+Access via SSH tunnel:
 ```
 ssh -L {panel_port}:127.0.0.1:{panel_port} {nickname}
 ```
-Затем открой: `https://127.0.0.1:{panel_port}/{web_base_path}`
+Then open: `https://127.0.0.1:{panel_port}/{web_base_path}`
 
-## 3. VPN-подключение
+## 3. VPN Connection
 
-| Параметр | Значение |
-|----------|----------|
-| Протокол | VLESS Reality |
-| Порт | 443 |
+| Parameter | Value |
+|-----------|-------|
+| Protocol | VLESS Reality |
+| Port | 443 |
 | SNI | `{best_sni}` |
-| Клиент | Hiddify |
+| Client | Hiddify |
 
-Ссылка VLESS:
+VLESS link:
 ```
 {VLESS_LINK}
 ```
 
-## 4. Настройка SSH-ключа
+## 4. SSH Key Setup
 
-Если у тебя ещё нет SSH-ключа, следуй инструкциям для своей ОС:
+If you don't have an SSH key yet, follow the instructions for your OS:
 
 ### macOS / Linux
 
 ```bash
-# Создать ключ
+# Create key
 ssh-keygen -t ed25519 -C "{username}@{nickname}" -f ~/.ssh/{nickname}_key -N ""
 
-# Отправить публичный ключ на сервер
+# Send public key to server
 scp ~/.ssh/{nickname}_key.pub {username}@{SERVER_IP}:~/
 
-# Установить права
+# Set permissions
 chmod 600 ~/.ssh/{nickname}_key
 
-# Добавить в SSH-конфиг
+# Add to SSH config
 cat >> ~/.ssh/config << 'SSHEOF'
 
 Host {nickname}
@@ -854,20 +854,20 @@ Host {nickname}
     IdentitiesOnly yes
 SSHEOF
 
-# Проверить подключение
+# Test connection
 ssh {nickname}
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-# Создать ключ
+# Create key
 ssh-keygen -t ed25519 -C "{username}@{nickname}" -f $HOME\.ssh\{nickname}_key -N '""'
 
-# Отправить публичный ключ на сервер
+# Send public key to server
 scp $HOME\.ssh\{nickname}_key.pub {username}@{SERVER_IP}:~/
 
-# Добавить в SSH-конфиг
+# Add to SSH config
 Add-Content $HOME\.ssh\config @"
 
 Host {nickname}
@@ -877,81 +877,81 @@ Host {nickname}
     IdentitiesOnly yes
 "@
 
-# Проверить подключение
+# Test connection
 ssh {nickname}
 ```
 
-Примечание: `chmod` не нужен на Windows. SSH использует ACL автоматически.
+Note: `chmod` is not needed on Windows. SSH uses ACL automatically.
 
-## 5. Частые команды
+## 5. Common Commands
 
 ```bash
-ssh {nickname}                           # подключиться к серверу
-ssh {nickname} "sudo x-ui status"        # статус панели
-ssh {nickname} "sudo x-ui restart"       # перезапустить панель
-ssh {nickname} "sudo x-ui log"           # логи
-ssh {nickname} "sudo x-ui setting -reset" # сбросить пароль панели
+ssh {nickname}                           # connect to server
+ssh {nickname} "sudo x-ui status"        # panel status
+ssh {nickname} "sudo x-ui restart"       # restart panel
+ssh {nickname} "sudo x-ui log"           # logs
+ssh {nickname} "sudo x-ui setting -reset" # reset panel password
 ```
 
-Добавить нового VPN-клиента:
-Открой панель через SSH-туннель → Inbounds → ... → Add Client → отправь ссылку/QR.
+Adding a new VPN client:
+Open the panel via SSH tunnel -> Inbounds -> ... -> Add Client -> send the link/QR.
 
-## 6. Статус безопасности
+## 6. Security Status
 
-| Параметр | Статус |
-|----------|--------|
-| Вход под root | Отключён |
-| Вход по паролю | Отключён |
-| Файрвол UFW | Включён (SSH, 80, 443) |
-| fail2ban | Включён (3 попытки → бан 24ч) |
-| Усиление ядра | Включено (sysctl) |
-| BBR | Включён |
-| ICMP (ping) | Отключён |
+| Parameter | Status |
+|-----------|--------|
+| Root login | Disabled |
+| Password login | Disabled |
+| Firewall UFW | Enabled (SSH, 80, 443) |
+| fail2ban | Enabled (3 attempts -> 24h ban) |
+| Kernel hardening | Enabled (sysctl) |
+| BBR | Enabled |
+| ICMP (ping) | Disabled |
 
-## 7. Решение проблем
+## 7. Troubleshooting
 
-| Проблема | Решение |
-|----------|---------|
-| Connection refused | `ssh {nickname} "sudo x-ui status"` — перезапусти если остановлен |
-| Permission denied (publickey) | Проверь путь и права ключа: `ls -la ~/.ssh/{nickname}_key` |
-| Host key verification failed | `ssh-keygen -R {SERVER_IP}` и переподключись |
-| Панель недоступна | Используй SSH-туннель (см. раздел 2) |
-| VPN не подключается | Неверный SNI или сервер лежит — проверь `sudo x-ui log` |
-| Забыл пароль панели | `ssh {nickname} "sudo x-ui setting -reset"` |
+| Problem | Solution |
+|---------|----------|
+| Connection refused | `ssh {nickname} "sudo x-ui status"` -- restart if stopped |
+| Permission denied (publickey) | Check key path and permissions: `ls -la ~/.ssh/{nickname}_key` |
+| Host key verification failed | `ssh-keygen -R {SERVER_IP}` and reconnect |
+| Panel not accessible | Use SSH tunnel (see section 2) |
+| VPN not connecting | Wrong SNI or server is down -- check `sudo x-ui log` |
+| Forgot panel password | `ssh {nickname} "sudo x-ui setting -reset"` |
 
-## 8. Инструкции для Claude Code
+## 8. Instructions for Claude Code
 
-Этот раздел для автоматической настройки через Claude Code на твоём ноутбуке.
-Скопируй всё ниже и вставь в Claude Code на ноутбуке.
+This section is for automated setup via Claude Code on your laptop.
+Copy everything below and paste into Claude Code on your laptop.
 
 ---
 
-**ЗАДАЧА: Настроить SSH-ключ и завершить настройку безопасности VPN-сервера**
+**TASK: Set up SSH key and finalize VPN server security**
 
-Данные сервера:
+Server details:
 - SERVER_IP: {SERVER_IP}
 - USERNAME: {username}
 - PASSWORD: {sudo_password}
 - NICKNAME: {nickname}
 
-Шаги:
+Steps:
 
-**Часть А: Установка sshpass (нужен для автоматической передачи пароля)**
-1. Определи ОС и установи sshpass:
+**Part A: Install sshpass (needed for automated password entry)**
+1. Detect OS and install sshpass:
    - macOS: `brew install hudochenkov/sshpass/sshpass`
    - Linux (Debian/Ubuntu): `sudo apt install -y sshpass`
 
-**Часть Б: Создание и установка SSH-ключа**
-2. Создай SSH-ключ: `ssh-keygen -t ed25519 -C "{username}@{nickname}" -f ~/.ssh/{nickname}_key -N ""`
-3. Установи ключ на сервере одной командой:
+**Part B: Create and install SSH key**
+2. Create SSH key: `ssh-keygen -t ed25519 -C "{username}@{nickname}" -f ~/.ssh/{nickname}_key -N ""`
+3. Install the key on the server in one command:
    ```
    sshpass -p '{sudo_password}' ssh-copy-id -i ~/.ssh/{nickname}_key.pub -o StrictHostKeyChecking=accept-new {username}@{SERVER_IP}
    ```
-4. Проверь вход по ключу (должен работать БЕЗ пароля):
+4. Verify key-based login works (should work WITHOUT password):
    ```
    ssh -i ~/.ssh/{nickname}_key {username}@{SERVER_IP} "echo 'SSH key OK'"
    ```
-5. Добавь SSH-конфиг:
+5. Add SSH config:
    ```
    cat >> ~/.ssh/config << 'EOF'
 
@@ -962,10 +962,10 @@ ssh {nickname} "sudo x-ui setting -reset" # сбросить пароль пан
        IdentitiesOnly yes
    EOF
    ```
-6. Проверь подключение через конфиг: `ssh {nickname} "echo 'Config OK'"`
+6. Verify config-based connection: `ssh {nickname} "echo 'Config OK'"`
 
-**Часть В: Финальная защита сервера (fail2ban + блокировка пароля)**
-7. Установи fail2ban:
+**Part C: Final server security (fail2ban + password lockdown)**
+7. Install fail2ban:
    ```
    ssh {nickname} 'sudo apt install -y fail2ban && sudo tee /etc/fail2ban/jail.local << JAILEOF
    [DEFAULT]
@@ -983,15 +983,15 @@ ssh {nickname} "sudo x-ui setting -reset" # сбросить пароль пан
    JAILEOF
    sudo systemctl enable fail2ban && sudo systemctl restart fail2ban'
    ```
-8. Заблокируй парольный вход и root:
+8. Disable password login and root access:
    ```
    ssh {nickname} 'sudo sed -i "s/^#\?PermitRootLogin.*/PermitRootLogin no/" /etc/ssh/sshd_config && sudo sed -i "s/^#\?PasswordAuthentication.*/PasswordAuthentication no/" /etc/ssh/sshd_config && sudo systemctl restart sshd'
    ```
-9. Проверь что SSH-ключ всё ещё работает после блокировки:
+9. Verify SSH key still works after lockdown:
    ```
-   ssh {nickname} "grep -E 'PermitRootLogin|PasswordAuthentication' /etc/ssh/sshd_config && sudo systemctl status fail2ban --no-pager && echo 'Сервер полностью защищён!'"
+   ssh {nickname} "grep -E 'PermitRootLogin|PasswordAuthentication' /etc/ssh/sshd_config && sudo systemctl status fail2ban --no-pager && echo 'Server fully secured!'"
    ```
-10. Скажи пользователю: "Готово! SSH-ключ настроен, fail2ban установлен, парольный вход отключён. Подключайся: ssh {nickname}"
+10. Tell the user: "Done! SSH key configured, fail2ban installed, password login disabled. Connect with: ssh {nickname}"
 ~~~
 
 ---
@@ -1001,53 +1001,53 @@ ssh {nickname} "sudo x-ui setting -reset" # сбросить пароль пан
 Print this summary for the user:
 
 ```
-VPN-сервер полностью настроен и работает!
+VPN server is fully configured and working!
 
-Подключение к серверу:
-   Команда:     ssh {nickname}
-   IP:          {SERVER_IP}
-   Пользователь: {username}
-   SSH-ключ:    ~/.ssh/{nickname}_key
-   Пароль sudo: {sudo_password}
+Server connection:
+   Command:    ssh {nickname}
+   IP:         {SERVER_IP}
+   User:       {username}
+   SSH key:    ~/.ssh/{nickname}_key
+   Sudo pass:  {sudo_password}
 
-Безопасность сервера:
-   Root-вход отключён
-   Парольный вход отключён
-   Файрвол включён (порты: SSH, 80, 443)
-   fail2ban защищает от брутфорса
-   Ядро усилено (sysctl)
-   BBR включён (TCP-оптимизация)
-   ICMP отключён (сервер не пингуется)
+Server security:
+   Root login disabled
+   Password login disabled
+   Firewall enabled (ports: SSH, 80, 443)
+   fail2ban protecting against brute force
+   Kernel hardened (sysctl)
+   BBR enabled (TCP optimization)
+   ICMP disabled (server not pingable)
 
-Панель 3x-ui:
-   URL:      https://127.0.0.1:{panel_port}/{web_base_path} (через SSH-туннель)
+3x-ui panel:
+   URL:      https://127.0.0.1:{panel_port}/{web_base_path} (via SSH tunnel)
    Login:    {panel_username}
    Password: {panel_password}
 
-VPN-подключение:
-   Протокол:  VLESS Reality
-   Порт:      443
+VPN connection:
+   Protocol:  VLESS Reality
+   Port:      443
    SNI:       {best_sni}
 
-Клиент:
-   Hiddify -- ссылка добавлена
+Client:
+   Hiddify -- link added
 
-Управление (через SSH):
-   ssh {nickname}                           # подключиться к серверу
-   ssh {nickname} "sudo x-ui status"        # статус панели
-   ssh {nickname} "sudo x-ui restart"       # перезапустить панель
-   ssh {nickname} "sudo x-ui log"           # логи
+Management (via SSH):
+   ssh {nickname}                           # connect to server
+   ssh {nickname} "sudo x-ui status"        # panel status
+   ssh {nickname} "sudo x-ui restart"       # restart panel
+   ssh {nickname} "sudo x-ui log"           # logs
 
-SSH-туннель к админке:
+SSH tunnel to admin panel:
    ssh -L {panel_port}:127.0.0.1:{panel_port} {nickname}
-   Затем открыть: https://127.0.0.1:{panel_port}/{web_base_path}
+   Then open: https://127.0.0.1:{panel_port}/{web_base_path}
 
-Добавить нового клиента:
-   Открой админку -> Inbounds -> ... -> Add Client
-   Скинь ссылку или QR-код другому человеку
+Adding a new client:
+   Open admin panel -> Inbounds -> ... -> Add Client
+   Send the link or QR code to the other person
 
-Методичка: ~/vpn-{nickname}-guide.md
-   Все пароли, инструкции и команды в одном файле
+Guide: ~/vpn-{nickname}-guide.md
+   All passwords, instructions, and commands in one file
 ```
 
 ## Critical Rules
@@ -1085,7 +1085,7 @@ SSH-туннель к админке:
 | Hiddify shows error | Update Hiddify to latest version, re-add link |
 | "connection refused" | Check x-ui is running: `sudo x-ui status` |
 | Forgot panel password | `sudo x-ui setting -reset` |
-| SCP fails (Windows) | Install OpenSSH: Settings → Apps → Optional Features → OpenSSH Client |
+| SCP fails (Windows) | Install OpenSSH: Settings -> Apps -> Optional Features -> OpenSSH Client |
 | SCP fails (connection refused) | Check UFW allows SSH: `sudo ufw status`, verify sshd running |
 | BBR not active after reboot | Re-check: `sysctl net.ipv4.tcp_congestion_control` -- re-apply if needed |
 

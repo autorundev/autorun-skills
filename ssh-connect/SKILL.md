@@ -1,56 +1,64 @@
 ---
 name: ssh-connect
-description: Надёжное SSH-подключение к любому серверу через expect. Используй когда нужно подключиться к серверу, выполнить SSH-команду, передать файлы (SCP/rsync), или когда SSH зависает/падает.
+description: >
+  Reliable SSH connection to any server via expect. Use when you need to connect to a server,
+  run SSH commands, transfer files (SCP/rsync), or when SSH hangs/drops. Triggers on: "ssh to",
+  "connect to server", "run command on server", "copy file to server", "scp", "rsync", "deploy via ssh".
 trigger: automatic
 allowed-tools: Bash, AskUserQuestion
 ---
 
-# SSH-подключение через expect
+# SSH Connection via expect
 
-**НИКОГДА не использовать голый `ssh`/`scp`/`rsync` — ВСЕГДА оборачивать в `expect`.** Без expect любой промпт заблокирует выполнение навсегда.
+**NEVER use bare `ssh`/`scp`/`rsync` -- ALWAYS wrap in `expect`.** Without expect, any interactive prompt will block execution forever.
 
-## .env переменные
+## Prerequisites
+
+Ensure `expect` is installed:
+```bash
+which expect || sudo apt-get install -y expect
+```
+
+## .env Variables
 
 ```env
 SERVER_HOST=192.168.1.100
-SERVER_PORT=22                       # по умолчанию 22
+SERVER_PORT=22                       # default: 22
 SERVER_USER=root
-SERVER_SSH_KEY=~/.ssh/id_ed25519    # если auth по ключу
-SERVER_PASSWORD=                     # если auth по паролю
-SERVER_SUDO_PASSWORD=                # если нужен sudo
+SERVER_SSH_KEY=~/.ssh/id_ed25519    # for key-based auth
+SERVER_PASSWORD=                     # for password-based auth
+SERVER_SUDO_PASSWORD=                # if sudo is needed
 ```
 
-Если переменных нет — спроси у пользователя через AskUserQuestion.
+If variables are missing, ask the user via AskUserQuestion.
 
-## Алгоритм
+## Algorithm
 
-1. Прочитай `.env` → извлеки `SERVER_*` переменные
-2. Нет `SERVER_HOST` → спроси параметры у пользователя
-3. Есть `SERVER_SSH_KEY` → key-based auth. Есть `SERVER_PASSWORD` → password-based. Оба → key-based
-4. Собери expect-скрипт по шаблону, подставь параметры
-5. При ошибке → см. таблицу проблем
+1. Read `.env` and extract `SERVER_*` variables
+2. No `SERVER_HOST` → ask the user for connection parameters
+3. `SERVER_SSH_KEY` present → key-based auth. `SERVER_PASSWORD` present → password-based. Both → key-based (preferred)
+4. Build expect script from the appropriate template, substitute parameters
+5. On error → see troubleshooting table
 
-## SSH-опции (добавлять ВСЕГДА)
+## SSH Options (ALWAYS include)
 
 ```
 SSH_OPTS="-o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=3"
 ```
 
-## Шаблон: одна команда
+## Template: Single Command (Key-Based)
 
 ```bash
-# Key-based: добавь -i <KEY>
-# Password-based: добавь -o PubkeyAuthentication=no и обработку "assword:" в expect
 expect -c '
 set timeout 30
 spawn ssh -i <KEY> -p <PORT> -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 <USER>@<HOST> "<COMMAND>"
 expect {
-    timeout { puts "ОШИБКА: Таймаут"; exit 1 }
+    timeout { puts "ERROR: Connection timed out"; exit 1 }
     "yes/no" { send "yes\r"; exp_continue }
     "assword:" { send "<PASSWORD>\r"; exp_continue }
-    "Connection refused" { puts "ОШИБКА: Соединение отклонено"; exit 1 }
-    "Permission denied" { puts "ОШИБКА: Доступ запрещён"; exit 1 }
-    "No route to host" { puts "ОШИБКА: Сервер недоступен"; exit 1 }
+    "Connection refused" { puts "ERROR: Connection refused"; exit 1 }
+    "Permission denied" { puts "ERROR: Permission denied"; exit 1 }
+    "No route to host" { puts "ERROR: Host unreachable"; exit 1 }
     eof
 }
 foreach {pid spawnid os_error_flag value} [wait] break
@@ -58,18 +66,41 @@ exit $value
 '
 ```
 
-## Шаблон: команда с sudo
+## Template: Single Command (Password-Based)
 
-Флаг `-t` обязателен для sudo.
+Add `-o PubkeyAuthentication=no` to force password auth.
+
+```bash
+expect -c '
+set timeout 30
+spawn ssh -o PubkeyAuthentication=no -p <PORT> -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 <USER>@<HOST> "<COMMAND>"
+expect {
+    timeout { puts "ERROR: Connection timed out"; exit 1 }
+    "yes/no" { send "yes\r"; exp_continue }
+    "assword:" { send "<PASSWORD>\r"; exp_continue }
+    "Connection refused" { puts "ERROR: Connection refused"; exit 1 }
+    "Permission denied" { puts "ERROR: Permission denied"; exit 1 }
+    "No route to host" { puts "ERROR: Host unreachable"; exit 1 }
+    eof
+}
+foreach {pid spawnid os_error_flag value} [wait] break
+exit $value
+'
+```
+
+## Template: Command with sudo
+
+The `-t` flag is **required** for sudo (allocates a PTY).
 
 ```bash
 expect -c '
 set timeout 30
 spawn ssh -t -i <KEY> -p <PORT> -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 <USER>@<HOST> "sudo <COMMAND>"
 expect {
-    timeout { puts "ОШИБКА: Таймаут"; exit 1 }
+    timeout { puts "ERROR: Connection timed out"; exit 1 }
+    "yes/no" { send "yes\r"; exp_continue }
     "assword" { send "<SUDO_PASSWORD>\r"; exp_continue }
-    "Permission denied" { puts "ОШИБКА: Неверный sudo-пароль"; exit 1 }
+    "Permission denied" { puts "ERROR: Wrong sudo password"; exit 1 }
     eof
 }
 foreach {pid spawnid os_error_flag value} [wait] break
@@ -77,14 +108,14 @@ exit $value
 '
 ```
 
-## Шаблон: несколько команд
+## Template: Multiple Commands (Interactive Session)
 
 ```bash
 expect -c '
 set timeout 30
 spawn ssh -i <KEY> -p <PORT> -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10 -o ServerAliveInterval=30 -o ServerAliveCountMax=3 <USER>@<HOST>
 expect {
-    timeout { puts "ОШИБКА: Таймаут"; exit 1 }
+    timeout { puts "ERROR: Connection timed out"; exit 1 }
     "yes/no" { send "yes\r"; exp_continue }
     "assword:" { send "<PASSWORD>\r"; exp_continue }
     -re {\$ $|# $}
@@ -98,52 +129,59 @@ expect eof
 '
 ```
 
-## SCP через expect
+## SCP via expect
 
 ```bash
 # Upload: <LOCAL> <USER>@<HOST>:<REMOTE>
 # Download: <USER>@<HOST>:<REMOTE> <LOCAL>
-# Password: добавь "assword:" обработку
+# For password auth: the "assword:" handler covers it
 expect -c '
 set timeout 120
 spawn scp -i <KEY> -P <PORT> -o StrictHostKeyChecking=accept-new <LOCAL> <USER>@<HOST>:<REMOTE>
 expect {
-    timeout { puts "ОШИБКА: Таймаут передачи"; exit 1 }
+    timeout { puts "ERROR: Transfer timed out"; exit 1 }
     "yes/no" { send "yes\r"; exp_continue }
     "assword:" { send "<PASSWORD>\r"; exp_continue }
+    "Permission denied" { puts "ERROR: Permission denied"; exit 1 }
     eof
 }
+foreach {pid spawnid os_error_flag value} [wait] break
+exit $value
 '
 ```
 
-## rsync через expect
+## rsync via expect
 
 ```bash
 expect -c '
 set timeout 300
 spawn rsync -avz -e "ssh -i <KEY> -p <PORT> -o StrictHostKeyChecking=accept-new" <LOCAL> <USER>@<HOST>:<REMOTE>
 expect {
-    timeout { puts "ОШИБКА: Таймаут rsync"; exit 1 }
+    timeout { puts "ERROR: rsync timed out"; exit 1 }
     "yes/no" { send "yes\r"; exp_continue }
     "assword:" { send "<PASSWORD>\r"; exp_continue }
+    "Permission denied" { puts "ERROR: Permission denied"; exit 1 }
     eof
 }
+foreach {pid spawnid os_error_flag value} [wait] break
+exit $value
 '
 ```
 
-## Проблемы и решения
+## Troubleshooting
 
-| Симптом | Решение |
-|---------|---------|
-| `REMOTE HOST IDENTIFICATION HAS CHANGED` | `ssh-keygen -R [<HOST>]:<PORT>` — **сначала спроси пользователя** (м.б. MITM) |
-| `Connection timed out` | Увеличь ConnectTimeout=30, проверь: `nc -z -w5 <HOST> <PORT>` |
+| Symptom | Solution |
+|---------|----------|
+| `REMOTE HOST IDENTIFICATION HAS CHANGED` | `ssh-keygen -R [<HOST>]:<PORT>` -- **ask the user first** (could be MITM) |
+| `Connection timed out` | Increase ConnectTimeout=30, verify reachability: `nc -z -w5 <HOST> <PORT>` |
 | `Permissions too open` | `chmod 600 <KEY_PATH>` |
-| `a terminal is required` (sudo) | Добавь `-t` в ssh |
-| `Connection refused` после попыток | Fail2Ban бан. **НЕ повторяй auth > 2 раз!** Подожди или спроси пользователя |
+| `a terminal is required` (sudo) | Add `-t` flag to ssh |
+| `Connection refused` after retries | Likely Fail2Ban. **Do NOT retry auth more than 2 times!** Wait or ask the user |
+| `expect: command not found` | Install: `sudo apt-get install -y expect` |
 
-## Безопасность
+## Safety Rules
 
-- **НЕ удалять файлы** на сервере без подтверждения пользователя
-- **НЕ трогать контейнеры** других проектов без подтверждения
-- **Бэкап перед изменением конфигов:** `cp file file.bak`
-- **НЕ повторять auth > 2 раз** — риск бана Fail2Ban
+- **Do NOT delete files** on the server without user confirmation
+- **Do NOT touch containers** of other projects without user confirmation
+- **Back up before editing configs:** `cp file file.bak`
+- **Do NOT retry auth more than 2 times** -- risk of Fail2Ban lockout

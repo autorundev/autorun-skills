@@ -1,84 +1,100 @@
 ---
 name: commit
-description: "Автокоммит, пуш и бэкап .env. TRIGGER: автоматически после каждого логического блока работы (новая фича, багфикс, обновление конфига/директив, рефакторинг, конец сессии). Без вопросов пользователю."
+description: "Auto-commit and push. Triggers after each logical block of work — new feature, bugfix, config update, refactoring, documentation change, end of session. No questions asked."
 ---
 
 # Commit
 
-Автоматический коммит, пуш и бэкап .env в iCloud.
+Automatic commit and push to remote.
 
-## Когда вызывать
+## When to trigger
 
-- Добавил новую функциональность
-- Исправил баг
-- Обновил конфиг, документацию, директивы
-- Закончил рефакторинг
-- В конце рабочей сессии (если были изменения)
+- Added new functionality
+- Fixed a bug
+- Updated config, documentation, or directives
+- Finished refactoring
+- End of work session (if there are uncommitted changes)
 
-**Без вопросов.** Не спрашивай "сделать коммит?", "запушить?", "какое сообщение?" — просто делай.
+**No questions.** Do not ask "should I commit?", "push?", "what message?" — just do it.
 
 ---
 
 ## Workflow
 
-### Шаг 1: Проверить статус
+### Step 1: Check status
 
 ```bash
 git status
 ```
 
-Если нет изменений — ничего не делать, выйти.
+If no changes — do nothing, exit.
 
-### Шаг 2: Добавить файлы
-
-```bash
-git add <конкретные файлы>
-```
-
-**ВАЖНО:**
-- НЕ использовать `git add .` или `git add -A`
-- Добавлять только конкретные изменённые файлы по именам
-
-**Что НЕ коммитить:**
-- `.env`, секреты, токены, ключи
-- `tmp/` — временные файлы
-- `__pycache__/`, `.DS_Store`
-
-### Шаг 3: Коммит
+### Step 2: Stage files
 
 ```bash
-git commit -m "Описание"
+git add <specific files by name>
 ```
 
-**Формат сообщения:**
-- На **русском** языке
-- Короткое описание что сделано (1 строка)
-- Без префиксов (feat:, fix: и т.д.)
-- Примеры: "Добавлен парсер YouTube", "Исправлен баг в экспорте", "Обновлён CLAUDE.md"
+**Rules:**
+- NEVER use `git add .` or `git add -A`
+- Add only specific changed files by name
+- Review the diff before staging: `git diff <file>` if unsure
 
-### Шаг 4: Пуш
+**Never commit:**
+- `.env`, secrets, tokens, keys
+- `tmp/`, `_tmp/` — temporary directories
+- `__pycache__/`, `.DS_Store`, `node_modules/`
+- Large binaries unless intentional
+
+### Step 3: Commit
+
+Use a conventional commit prefix matching project style. Check recent commits with `git log --oneline -5` to match the convention.
+
+Common prefixes: `feat:`, `fix:`, `docs:`, `refactor:`, `deps:`, `test:`, `proto:`, `chore:`
+
+```bash
+git commit -m "$(cat <<'EOF'
+prefix: concise description of what was done
+
+Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+**Message rules:**
+- One line, concise description of what was done
+- Use English for commit messages
+- Examples: `feat: YouTube parser`, `fix: export bug with empty fields`, `docs: update CLAUDE.md architecture section`
+
+### Step 4: Push
 
 ```bash
 git push
 ```
 
-- Если remote не настроен — сообщи пользователю, не падай
-- Если пуш не прошёл (нет прав, конфликт) — сообщи и предложи решение
+**If upstream is not set:**
+```bash
+git push -u origin $(git branch --show-current)
+```
 
+**If push fails:**
+- No permissions / auth error — report to user, do not retry
+- Diverged history — report to user, suggest `git pull --rebase` then push
+- No remote configured — report to user
 
 ---
 
-## Правила
+## Rules
 
-- Работай в **текущей ветке** — не создавай новые без просьбы
-- Для изолированной работы есть скилл `worktree`
+- Work in the **current branch** — do not create new branches without being asked
+- For isolated work use the `worktree` skill
+- If working in a project subdirectory, use `git -C <project-root>` to ensure correct repo context
 
 ---
 
-## Checklist выполнения
+## Completion checklist
 
-- [ ] git status — есть изменения
-- [ ] git add конкретных файлов (не .env, не tmp/)
-- [ ] git commit с сообщением на русском
-- [ ] git push
-- [ ] Бэкап .env (если .env есть)
+- [ ] `git status` — changes exist
+- [ ] `git add` specific files (no .env, no tmp/, no secrets)
+- [ ] `git commit` with conventional prefix and English message
+- [ ] `git push` succeeded (or upstream set with `-u`)

@@ -1,6 +1,6 @@
 ---
 name: system-integrity-audit
-description: "Deep system integrity audit: finds dead code, broken wiring, unreachable components, blocked conditions, and orphaned registrations. Checks that every defined component is actually called, every registration leads to execution, and no condition permanently blocks a code path. Enriches findings with git blame, code comments, and docs to classify intent (dead vs planned vs deprecated)."
+description: "Deep system integrity audit: builds a complete inventory of all definitions (functions, methods, classes, constants, DB tables, config keys, events), then verifies every item is wired, reachable, and not blocked. Finds dead code, broken wiring, unreachable components, orphaned registrations, unused DB tables, and phantom config. Enriches with git blame and docs to classify intent."
 ---
 
 # System Integrity Audit
@@ -21,7 +21,7 @@ Deep system wiring audit. Finds components that are defined but never called, re
 - For code quality assessment — use `code-reviewer`
 - For architecture assessment — use `architecture-review`
 - For finding logic bugs — that's manual debugging
-- For security audit — use a dedicated security audit skill
+- For security audit — use `security-audit`
 
 ---
 
@@ -31,24 +31,142 @@ Deep system wiring audit. Finds components that are defined but never called, re
 
 1. Read project CLAUDE.md — structure, entry points, conventions
 2. `git log --oneline -30` — recent changes, what was added/removed
-3. Identify key registries and dispatch tables:
-   - Handler registrations (dict of name → function)
-   - Schema/tool definitions (list of schemas)
-   - Scheduled jobs (cron, intervals)
-   - Weight/config tables (what types are defined)
-   - Export lists (`__init__.py`, `__all__`)
-   - Route registrations (URL → handler, callback → function)
+3. Identify the project language and framework to set grep patterns for Phase 2
 
-### Phase 2: Trace Every Wire (parallel agents recommended)
+### Phase 2: Build Complete Inventory
 
-Launch 3-5 research agents in parallel, each covering one domain. Each agent should check:
+**This is the critical step that prevents missed findings.** Build an exhaustive list of everything defined in the project BEFORE checking wiring.
 
-#### For every DEFINED component:
+#### 2a. Function/Method Inventory
+
+```bash
+# Python
+Grep pattern="^(def |    def |        def )" type="py" path="src/" output_mode="content"
+# Also check standalone scripts, CLI entry points, etc.
+
+# TypeScript/JavaScript
+Grep pattern="^(export )?(async )?(function |const \w+ = )" type="ts" path="src/" output_mode="content"
 ```
-1. Is it imported somewhere outside its own file?
-2. Is it called/referenced in runtime code (not just tests)?
-3. Can the call path actually be reached? (no always-false guards)
-4. If registered in a dispatch table — does the key match what callers send?
+
+For EVERY function/method found, record: `file:line function_name`. This is the master list — nothing should be skipped.
+
+#### 2b. Class Inventory
+
+```bash
+Grep pattern="^class " type="py" path="src/" output_mode="content"
+```
+
+For each class, list ALL its methods. A class may be imported and used, but specific methods on it may be dead.
+
+#### 2c. Constants and Enums
+
+```bash
+# Top-level constants (UPPER_CASE)
+Grep pattern="^[A-Z][A-Z_]+ = " type="py" path="src/" output_mode="content"
+
+# Enum definitions
+Grep pattern="class \w+\(.*Enum" type="py" path="src/" output_mode="content"
+```
+
+#### 2d. Database Tables
+
+```bash
+# Table definitions in code
+Grep pattern="CREATE TABLE|\.create_table|class \w+.*Model|__tablename__" path="src/" output_mode="content"
+
+# Migration files
+Glob pattern="**/migrations/**/*.py"
+Glob pattern="**/migrations/**/*.sql"
+```
+
+#### 2e. Config/Environment Keys
+
+```bash
+# Keys read from env/config
+Grep pattern="os\.environ|os\.getenv|config\[|config\.get|\.env\." path="src/" output_mode="content"
+
+# Keys defined in .env.example, config files
+Grep pattern="^[A-Z]" path=".env.example" output_mode="content"
+```
+
+#### 2f. Events/Signals
+
+```bash
+# Events emitted
+Grep pattern="\.emit\(|\.send\(|\.publish\(|\.dispatch\(|signal\." path="src/" output_mode="content"
+
+# Events listened to
+Grep pattern="\.on\(|\.subscribe\(|\.connect\(|@receiver|\.add_listener" path="src/" output_mode="content"
+```
+
+#### 2g. Registries and Dispatch Tables
+
+- Handler registrations (dict of name -> function)
+- Schema/tool definitions (list of schemas)
+- Scheduled jobs (cron, intervals)
+- Weight/config tables (what types are defined)
+- Export lists (`__init__.py`, `__all__`)
+- Route registrations (URL -> handler, callback -> function)
+
+### Phase 3: Trace Every Wire (parallel agents)
+
+Split by domain — one agent per domain. **Each agent receives the inventory subset for their domain** (from Phase 2).
+
+**How to split domains (adapt to project):**
+- Agent 1: Core business logic (models, services, domain functions)
+- Agent 2: API/handlers layer (routes, dispatch, callbacks, schemas)
+- Agent 3: Infrastructure (DB tables, migrations, config, scheduled jobs, init/exports)
+- Agent 4: Cross-cutting (events, constants, enums, utilities)
+
+Add more agents for larger codebases. Each agent checks:
+
+#### For every DEFINED function/method (from inventory):
+```
+1. Grep for the function name across ALL source files (not just its own file)
+2. Is it called in runtime code? (exclude test files from this check)
+3. Is it called ONLY from tests? → flag as TEST-ONLY
+4. Is it imported but never actually called? (imported for type hints, re-export, etc.)
+5. Can the call path actually be reached? (no always-false guards)
+6. If registered in a dispatch table — does the key match what callers send?
+```
+
+**Critical: grep for the exact name, not just the file.** A function `process_order` might be defined in `orders.py` which is imported everywhere, but `process_order` itself is never called.
+
+#### For every CLASS METHOD:
+```
+1. Is the class instantiated somewhere?
+2. Is THIS SPECIFIC METHOD called on any instance?
+3. Is it only called via parent class / ABC requirement?
+4. Could it be called dynamically (getattr, __getattr__, etc.)?
+```
+
+#### For every CONSTANT/ENUM value:
+```
+1. Is the constant referenced outside its definition file?
+2. For enums: is every enum member used, or only some?
+3. Is it shadowed by a local variable with the same name?
+```
+
+#### For every DB TABLE:
+```
+1. Is there code that INSERTs into this table?
+2. Is there code that SELECTs from this table?
+3. Is there a migration that creates it but the table is never used in app code?
+4. Is there app code referencing a table that no migration creates?
+```
+
+#### For every CONFIG/ENV KEY:
+```
+1. Is every key in .env.example actually read by code?
+2. Is every key read by code defined in .env.example or has a default?
+3. Are there keys with defaults that are never overridden? (dead config)
+```
+
+#### For every EVENT:
+```
+1. Every emitted event has at least one listener
+2. Every listener has at least one emitter
+3. Event name strings match exactly (no typos)
 ```
 
 #### For every REGISTRATION (handler, schema, weight, schedule):
@@ -75,11 +193,11 @@ Launch 3-5 research agents in parallel, each covering one domain. Each agent sho
 3. Will it crash at import time or only when called?
 ```
 
-### Phase 3: Classify Intent (critical step)
+### Phase 4: Classify Intent (critical step)
 
 For each finding, **before marking it as dead code**, check:
 
-1. **Git blame**: when was it added? By whom? Is there a commit message explaining intent?
+1. **Git blame**: when was it added? Is there a commit message explaining intent?
    ```bash
    git log --oneline --follow -5 -- path/to/file.py
    git log --all --oneline --grep="function_name"
@@ -87,12 +205,14 @@ For each finding, **before marking it as dead code**, check:
 
 2. **Code comments**: is there a `# TODO`, `# PLANNED`, `# DEPRECATED`, `# v2` marker?
 
-3. **Documentation**: is it mentioned in specs, tasks.md, or CLAUDE.md as planned/future work?
+3. **Documentation**: is it mentioned in specs, tasks.md, VISION.md, or CLAUDE.md as planned/future work?
 
 4. **Tests**: does it have tests? Tests without production callers may indicate:
    - Planned feature (tests written first, integration pending)
    - Removed feature (integration removed, tests left behind)
    - Library function (used by external consumers)
+
+5. **Dynamic dispatch**: could it be called via `getattr()`, string lookup, plugin system, or reflection?
 
 Classify each finding:
 
@@ -104,29 +224,35 @@ Classify each finding:
 | **DEPRECATED** | Replaced but not cleaned up | Remove, update docs |
 | **BLOCKED** | Condition prevents execution | Fix condition or remove |
 | **FRAGILE** | Works but depends on implicit assumptions | Add explicit check or doc |
+| **TEST-ONLY** | Called from tests but no production path | Verify if intentional (helper/fixture) or orphaned |
+| **PHANTOM** | Referenced in config/schema but no code exists | Create or remove reference |
 
-### Phase 4: Report
-
-Structure the report as follows:
+### Phase 5: Report
 
 ```markdown
 ## System Integrity Audit — [Project Name]
+**Date:** YYYY-MM-DD | **Scope:** X files, Y functions, Z tables audited
 
-### Critical (runtime crashes, data loss)
-| # | Component | Problem | Classification | Evidence |
-|---|-----------|---------|----------------|----------|
+### Stats
+- Total definitions scanned: N
+- Verified wired: N (N%)
+- Findings: N critical, N dead, N blocked, N fragile
 
-### Dead (defined, never called)
-| # | Component | Last touched | Classification | Evidence |
-|---|-----------|-------------|----------------|----------|
+### Critical (runtime crashes, data loss, broken imports)
+| # | Component | File:Line | Problem | Classification | Evidence |
+|---|-----------|-----------|---------|----------------|----------|
+
+### Dead (defined, never called in production)
+| # | Component | File:Line | Last touched | Classification | Evidence |
+|---|-----------|-----------|-------------|----------------|----------|
 
 ### Blocked (called but condition prevents execution)
-| # | Component | Blocking condition | Classification | Evidence |
-|---|-----------|-------------------|----------------|----------|
+| # | Component | File:Line | Blocking condition | Classification | Evidence |
+|---|-----------|-----------|-------------------|----------------|----------|
 
 ### Fragile (works but brittle wiring)
-| # | Component | Risk | Classification | Evidence |
-|---|-----------|------|----------------|----------|
+| # | Component | File:Line | Risk | Classification | Evidence |
+|---|-----------|-----------|------|----------------|----------|
 
 ### OK (verified working)
 Brief summary of what was checked and confirmed working.
@@ -139,6 +265,12 @@ Prioritized list: what to fix now vs later vs never.
 
 ## Checklist for Each Domain
 
+### Functions / Methods
+- [ ] Every public function is called from at least one production path
+- [ ] Every class method is called on at least one instance
+- [ ] No functions exist only because tests reference them (unless intentional fixtures)
+- [ ] No imported-but-never-called functions
+
 ### Handlers / Dispatch
 - [ ] Every schema has a handler
 - [ ] Every handler is in the dispatch table
@@ -147,9 +279,25 @@ Prioritized list: what to fix now vs later vs never.
 
 ### Registrations / Weights
 - [ ] Every type in weights has a handler
-- [ ] Every handler has all required weight entries (base, time_window, recency)
+- [ ] Every handler has all required weight entries
 - [ ] Silent vs content generators are correctly categorized
 - [ ] No type exists in one table but not others
+
+### Database Tables
+- [ ] Every defined table has both read and write code paths
+- [ ] Every table referenced in code exists in migrations/schema
+- [ ] No orphan migrations creating tables nothing uses
+- [ ] Column names in code match actual schema
+
+### Config / Environment
+- [ ] Every .env.example key is read by code
+- [ ] Every env read in code has a definition or default
+- [ ] No dead config keys with hardcoded defaults that are never overridden
+
+### Events / Signals
+- [ ] Every emitted event has at least one listener
+- [ ] Every listener has at least one emitter
+- [ ] Event name strings match exactly between emit and listen
 
 ### Scheduled Jobs
 - [ ] Every cron/interval job references an existing function
@@ -160,6 +308,11 @@ Prioritized list: what to fix now vs later vs never.
 - [ ] Every re-export in `__init__.py` points to existing function
 - [ ] Every `__all__` entry matches an actual export
 - [ ] No alias exports that nothing imports through
+
+### Constants / Enums
+- [ ] Every constant is referenced outside its definition file
+- [ ] Every enum member is used (not just the enum class)
+- [ ] No shadowed constants
 
 ### Context / State
 - [ ] Every context key that's read is also written somewhere
@@ -183,14 +336,23 @@ Prioritized list: what to fix now vs later vs never.
 6. **Re-export alias, no callers**: `__init__.py` exports alias but all callers import directly
 7. **Default swallows missing**: `dict.get(key, default)` silently returns default for typo'd keys
 8. **Test-only code**: functions exist only because tests call them, no production path
+9. **Method on used class**: class is imported and instantiated, but specific method is never called
+10. **Config defined, never read**: `.env.example` has keys that no code references
+11. **Event emitted, nobody listens**: `.emit("event_name")` but no `.on("event_name")`
+12. **Enum member unused**: `Status.ARCHIVED` defined but never checked or set
+13. **Migration without model**: table exists in DB but no ORM model or query references it
+14. **Dynamic key mismatch**: `handlers[msg.type]` but `msg.type` never equals a registered key
 
 ---
 
 ## Tips for Efficiency
 
+- **Inventory first, trace second.** Never skip Phase 2 — it's what prevents missed findings.
 - Use `Grep` with `output_mode: "files_with_matches"` to quickly find all files that reference a function
 - Cross-reference definition files with import files — mismatches are findings
 - For large codebases, audit one domain per agent (tools, heartbeats, vault, API, etc.)
 - Start from registries and dispatch tables — they're the "switchboard" of the system
 - Check `__init__.py` files — they're where broken re-exports hide
 - `git log --diff-filter=D -- path` shows deleted files that might still be referenced
+- When checking method calls, remember Python patterns: `getattr(obj, name)`, `**kwargs`, `super().method()`
+- For constants, check both `from module import CONST` and `module.CONST` patterns

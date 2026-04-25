@@ -1,14 +1,12 @@
 # autorun-skills
 
-Custom skills (slash commands) for [Claude Code](https://claude.com/claude-code).
+Custom skills for [Claude Code](https://claude.com/claude-code). Written for real projects — VPN setup, deployment, security audits, Docker debugging, and more. Russian-first, battle-tested.
 
 ## Installation
 
-Copy any skill directory into `~/.claude/skills/`:
-
 ```bash
 # Single skill
-cp -r system-integrity-audit ~/.claude/skills/
+cp -r security-audit ~/.claude/skills/
 
 # All skills
 cp -r */ ~/.claude/skills/
@@ -21,64 +19,46 @@ Skills are available immediately as `/skill-name` in Claude Code.
 ### Development Workflow
 | Skill | Description |
 |-------|-------------|
-| `commit` | Auto-commit, push and .env backup |
-| `deploy` | Manual deploy via Docker + Git |
-| `tdd` | Test-driven development with RED-GREEN-REFACTOR cycle |
-| `worktree` | Git worktree management for parallel work |
-| `db-migrations` | Database migration management (SQLite, PostgreSQL) |
+| `commit` | Auto-commit, push and .env backup. Triggers after each logical block of work. |
+| `deploy` | Manual deploy to any server via Docker + Git (first deploy + updates). |
+| `worktree` | Git worktree management for parallel Claude agents on one project. |
+| `db-migrations` | Database migration management for SQLite and PostgreSQL (Alembic, raw SQL). |
 
-### Code Quality
+### Code Quality & Security
 | Skill | Description |
 |-------|-------------|
-| `system-integrity-audit` | Deep wiring audit: finds dead code, broken connections, unreachable components |
-| `architecture-review` | System design audit: complexity, coupling, scalability |
-| `docs-cleaner` | Consolidate redundant documentation |
-| `simplify` | Review changed code for reuse and efficiency |
-| `qa-expert` | Comprehensive QA testing process |
-| `promptfoo-evaluation` | LLM prompt evaluation with Promptfoo |
-
-### Frontend & Design
-| Skill | Description |
-|-------|-------------|
-| `frontend-design` | Production-grade frontend interfaces |
-| `design-review` | Visual design quality review |
-| `interface-design` | Persistent design system management |
-| `tailwind-theme-builder` | Tailwind v4 + shadcn/ui setup |
-| `a11y-audit` | WCAG 2.1 accessibility audit |
-| `web-design-guidelines` | Web Interface Guidelines compliance |
-
-### UX Research
-| Skill | Description |
-|-------|-------------|
-| `empathy-map` | 4-quadrant empathy map synthesis |
-| `journey-map` | End-to-end user journey mapping |
-| `experience-map` | Holistic experience ecosystem map |
-| `card-sort-analysis` | Card sorting results analysis |
-| `jobs-to-be-done` | JTBD framework mapping |
-| `opportunity-framework` | Impact-effort prioritization |
-| `ux-writing` | UI copy: microcopy, errors, empty states |
+| `system-integrity-audit` | Deep wiring audit: builds complete inventory of all definitions, then traces every wire. Finds dead code, orphaned registrations, unused DB tables, phantom config. |
+| `architecture-review` | System design audit: complexity, coupling, scalability, maintainability, security posture. |
+| `security-audit` | AI application security: prompt injection, tool abuse, data exfiltration, credential exposure, multi-user isolation, context poisoning, output sanitization. Works with any LLM-based app. |
+| `performance-profiler` | Python/Docker performance profiling: cProfile, memory_profiler, py-spy, async profiling, container metrics. |
 
 ### Infrastructure
 | Skill | Description |
 |-------|-------------|
-| `docker` | Docker containerization |
-| `docker-debug` | Docker/compose debugging |
-| `ssh-connect` | Reliable SSH connections via expect |
-| `3x-ui-setup` | VPN server setup (VLESS Reality) |
-| `performance-profiler` | Python/Docker performance profiling |
+| `docker` | Docker containerization for projects. |
+| `docker-debug` | Docker/compose debugging: container inspection, log analysis, network, volumes. |
+| `ssh-connect` | Reliable SSH connections via expect. Handles hangs, password auth, SCP/rsync. |
+| `3x-ui-setup` | Complete VPN server setup: server hardening + 3x-ui (Xray) with VLESS Reality or VLESS TLS. |
+| `install-mcp` | MCP server installation, removal, configuration and debugging for Claude Code. |
 
 ### Integrations
 | Skill | Description |
 |-------|-------------|
-| `install-mcp` | MCP server installation for Claude Code |
-| `mcp-builder` | Build MCP servers (Python/Node) |
-| `claude-api` | Build apps with Claude API / Anthropic SDK |
-| `tavily` | Web search and URL extraction via Tavily |
+| `tavily` | Web search and URL content extraction via Tavily API. Fallback when WebFetch fails. |
 
-### Project-Specific
+## Other Skills We Use (not included)
+
+Generic English-language skills we also install. Not customized — similar versions available on [skills.sh](https://skills.sh):
+
 | Skill | Description |
 |-------|-------------|
-| `vectoros-security-audit` | Security audit for VectorOS |
+| `tdd` | Test-driven development (RED-GREEN-REFACTOR cycle) |
+| `frontend-design` | Production-grade frontend interfaces |
+| `game-design` | Game mechanics design and tuning |
+| `qa-expert` | QA testing process (Google Testing Standards) |
+| `mcp-builder` | Build MCP servers (Python FastMCP / Node) |
+| `docs-cleaner` | Consolidate redundant documentation |
+| `ux-writing` | UI copy: microcopy, errors, empty states, CTAs |
 
 ## Skill Format
 

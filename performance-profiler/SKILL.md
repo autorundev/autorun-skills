@@ -1,94 +1,114 @@
 ---
 name: performance-profiler
-description: Python/Docker performance profiling skill. Use when diagnosing slow code, high memory usage, CPU spikes, slow API responses, or Telegram bot latency issues. Covers cProfile, memory_profiler, py-spy, async profiling, Docker container metrics, and actionable optimization recommendations. Triggers on: "профилирование", "performance profiling", "медленно работает", "тормозит", "высокое потребление памяти", "memory leak", "утечка памяти", "CPU spike", "латентность бота", "slow response", "оптимизация производительности".
+description: "Python/Docker performance profiling skill. Use when diagnosing slow code, high memory usage, CPU spikes, slow API responses, or bot latency issues. Covers cProfile, memory_profiler, py-spy, async profiling, Docker container metrics, and actionable optimization recommendations. Triggers on: performance profiling, slow response, high memory usage, memory leak, CPU spike, bot latency, optimize performance, why is it slow, profile this, find bottleneck."
 ---
 
 # Performance Profiler
 
-Диагностика и оптимизация производительности Python-сервисов и Docker-контейнеров.
+Diagnostics and optimization for Python services and Docker containers.
 
 ---
 
 ## Before You Start
 
-Прочитай перед запуском:
-- Симптомы: что именно медленно? (конкретный handler, startup, memory over time)
-- Метрики baseline: `docker stats`, `htop`, время ответа бота
-- Последние изменения: `git log --oneline -10`
+Read before launching:
+- Symptoms: what exactly is slow? (specific handler, startup, memory growth over time)
+- Baseline metrics: `docker stats`, `htop`, bot response time
+- Recent changes: `git log --oneline -10`
 
-**Не оптимизируй вслепую.** Сначала измерь, потом фикси.
+**Do not optimize blindly.** Measure first, then fix.
 
 ---
 
 ## Step 1: Quick System Check
 
 ```bash
-# Контейнеры — CPU/Memory прямо сейчас
+# Containers — CPU/Memory right now
 docker stats --no-stream
 
-# Процессы внутри контейнера
+# Processes inside a container
 docker exec <container> top -bn1 | head -20
 
-# Сколько памяти жрёт Python процесс
+# Memory consumption of the Python process
 docker exec <container> ps aux --sort=-%mem | head -10
 
-# Открытые файловые дескрипторы (признак утечки)
+# Open file descriptors (sign of a leak)
 docker exec <container> ls /proc/1/fd | wc -l
 
-# Swap usage (если swap активен — уже плохо)
+# Swap usage (if swap is active — already a problem)
 free -h && swapon --show
+
+# Disk I/O — check if the disk is a bottleneck
+iostat -x 1 3 2>/dev/null || (apt-get install -y sysstat -q && iostat -x 1 3)
 ```
 
 **Red flags:**
-- Контейнер > 80% от Memory limit → риск OOM kill
-- fd count растёт со временем → утечка дескрипторов
-- CPU постоянно > 70% в idle → что-то крутится фоном
+- Container > 80% of Memory limit -> risk of OOM kill
+- fd count grows over time -> descriptor leak
+- CPU constantly > 70% when idle -> something spinning in the background
+- High iowait% -> disk is the bottleneck, not CPU
 
 ---
 
 ## Step 2: Python CPU Profiling
 
-### Вариант A — cProfile (встроенный, без изменений кода)
+### Option A — cProfile (built-in, no code changes)
 
 ```bash
-# Запустить скрипт с профилированием
+# Run script with profiling
 python3 -m cProfile -o profile.out src/main.py
 
-# Анализ результатов
+# Analyze results
 python3 -c "
-import pstats, io
+import pstats
 s = pstats.Stats('profile.out')
 s.sort_stats('cumulative')
 s.print_stats(20)
 "
 ```
 
-### Вариант B — py-spy (production-safe, без остановки процесса)
+### Option B — py-spy (production-safe, no process restart)
+
+**Important:** When profiling inside Docker, the container needs `SYS_PTRACE` capability:
+```yaml
+# docker-compose.yml
+services:
+  myservice:
+    cap_add:
+      - SYS_PTRACE
+```
 
 ```bash
 pip install py-spy -q
 
-# Найти PID Python процесса
+# Find the PID of the Python process
 docker exec <container> ps aux | grep python
 
-# Flame graph (открыть в браузере)
+# Flame graph (open in browser)
+# Run from HOST if container has SYS_PTRACE, or from inside the container
 py-spy record -o flamegraph.svg --pid <PID> --duration 30
 
-# Топ функций в реальном времени
+# Top functions in real time
 py-spy top --pid <PID>
 ```
 
-### Вариант C — line_profiler (построчное профилирование)
+**Reading a flame graph:**
+- Width = time spent (wider = slower)
+- Height = call stack depth
+- Look for wide bars near the top — those are the actual slow functions
+- Narrow-but-tall towers = deep call stacks (possible over-abstraction)
+
+### Option C — line_profiler (line-by-line profiling)
 
 ```python
-# Добавить декоратор к подозрительной функции
+# Add decorator to the suspect function
 from line_profiler import LineProfiler
 
 profiler = LineProfiler()
 profiler.add_function(your_slow_function)
 profiler.enable_by_count()
 
-# После запуска:
+# After running:
 profiler.print_stats()
 ```
 
@@ -101,17 +121,25 @@ kernprof -l -v script.py
 
 ## Step 3: Memory Profiling
 
-### Baseline — tracemalloc (встроенный)
+### Baseline — tracemalloc (built-in)
 
 ```python
 import tracemalloc
 
 tracemalloc.start()
 
-# ... твой код ...
+# ... your code ...
 
 snapshot = tracemalloc.take_snapshot()
 top_stats = snapshot.statistics('lineno')
+for stat in top_stats[:10]:
+    print(stat)
+
+# Compare two snapshots to find growth
+snapshot1 = tracemalloc.take_snapshot()
+# ... more code ...
+snapshot2 = tracemalloc.take_snapshot()
+top_stats = snapshot2.compare_to(snapshot1, 'lineno')
 for stat in top_stats[:10]:
     print(stat)
 ```
@@ -121,16 +149,15 @@ for stat in top_stats[:10]:
 ```bash
 pip install memory_profiler -q
 
-# Декоратор на функцию
-# @profile  ← добавь в код
+# Add @profile decorator to the function, then:
 python3 -m memory_profiler script.py
 
-# Mprof — график потребления памяти за время
+# mprof — memory consumption graph over time
 mprof run python3 script.py
-mprof plot  # требует matplotlib
+mprof plot  # requires matplotlib
 ```
 
-### Утечки — objgraph
+### Leaks — objgraph
 
 ```bash
 pip install objgraph -q
@@ -139,15 +166,22 @@ pip install objgraph -q
 ```python
 import objgraph
 
-# Топ объектов в памяти
+# Top objects in memory
 objgraph.show_most_common_types(limit=10)
 
-# Что растёт между двумя снимками
+# What is growing between two snapshots
 objgraph.show_growth()
 
-# Граф ссылок на подозрительный объект
+# Reference graph for a suspicious object
 objgraph.show_backrefs(obj, max_depth=3)
 ```
+
+### Common memory leak patterns in Python
+- **Unclosed connections/files**: use `with` statements or explicit `.close()`
+- **Growing caches without eviction**: use `functools.lru_cache(maxsize=N)` with a bound
+- **Circular references with `__del__`**: prevent garbage collection
+- **Global lists/dicts that accumulate**: add TTL or max-size pruning
+- **Event handler accumulation**: unsubscribe when done
 
 ---
 
@@ -157,9 +191,9 @@ objgraph.show_backrefs(obj, max_depth=3)
 import asyncio
 import cProfile
 
-# Профилирование async функции
+# Profiling an async function
 async def main():
-    # твой код
+    # your code
     pass
 
 profiler = cProfile.Profile()
@@ -177,36 +211,58 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 asyncio.get_event_loop().set_debug(True)
-# Логирует coroutines которые выполняются > 100ms
+# Logs coroutines that execute for > 100ms (blocking the event loop)
 ```
 
-### aiogram-specific — middleware для измерения
+### aiogram-specific — timing middleware
 
 ```python
 from aiogram import BaseMiddleware
 import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 class TimingMiddleware(BaseMiddleware):
     async def __call__(self, handler, event, data):
         start = time.perf_counter()
         result = await handler(event, data)
         elapsed = (time.perf_counter() - start) * 1000
-        if elapsed > 500:  # > 500ms — логируем
-            print(f"SLOW handler: {elapsed:.0f}ms | {type(event).__name__}")
+        if elapsed > 500:  # > 500ms — log it
+            logger.warning(
+                "SLOW handler: %.0fms | %s",
+                elapsed, type(event).__name__
+            )
         return result
+```
+
+### Finding event loop blockers
+
+```python
+# Add to startup to detect blocking calls in async code
+import asyncio
+
+loop = asyncio.get_event_loop()
+loop.slow_callback_duration = 0.1  # 100ms threshold
+
+# Any callback taking longer than this will be logged as WARNING
 ```
 
 ---
 
-## Step 5: I/O и Database Bottlenecks
+## Step 5: I/O and Database Bottlenecks
 
 ```bash
-# strace — какие syscalls висят (запускать внутри контейнера)
+# strace — which syscalls are hanging (run inside container)
+# Requires SYS_PTRACE capability
 apt-get install -y strace -q
-strace -p <PID> -e trace=network,file -c  # summary за 10 сек
+strace -p <PID> -e trace=network,file -c  # summary over 10 seconds, Ctrl+C to stop
 
-# lsof — открытые соединения
-docker exec <container> lsof -i | grep ESTABLISHED | wc -l
+# lsof — open connections
+docker exec <container> lsof -i 2>/dev/null | grep ESTABLISHED | wc -l
+
+# Network latency to external services
+docker exec <container> timeout 5 bash -c 'echo | nc -w3 api.example.com 443 && echo "OK" || echo "TIMEOUT"'
 ```
 
 ### SQLite slow queries
@@ -214,20 +270,40 @@ docker exec <container> lsof -i | grep ESTABLISHED | wc -l
 ```python
 import sqlite3
 import time
+import logging
 
-conn = sqlite3.connect('vault.db')
-conn.set_trace_callback(print)  # логировать все запросы
+logger = logging.getLogger(__name__)
 
-# Или через EXPLAIN QUERY PLAN
-cursor = conn.execute("EXPLAIN QUERY PLAN SELECT ...")
-print(cursor.fetchall())
+# Log all queries with timing
+class TimedConnection:
+    def __init__(self, db_path):
+        self.conn = sqlite3.connect(db_path)
+
+    def execute(self, sql, params=()):
+        start = time.perf_counter()
+        result = self.conn.execute(sql, params)
+        elapsed = (time.perf_counter() - start) * 1000
+        if elapsed > 50:  # > 50ms
+            logger.warning("SLOW query (%.0fms): %s", elapsed, sql[:200])
+        return result
 ```
 
-### Найти N+1 запросы в коде
+```bash
+# Check query plans
+sqlite3 database.db "EXPLAIN QUERY PLAN SELECT ...;"
+# "SCAN TABLE" = full table scan = needs an index
+# "SEARCH ... USING INDEX" = good
+```
+
+### Finding N+1 queries in code
 
 ```bash
-grep -n "for.*in" src/*.py | head -20
-# Проверить каждый цикл — нет ли внутри db/file операций
+# Find loops that might contain DB/API calls
+grep -rn "for.*in" src/ --include="*.py" | head -20
+# Check each loop — are there db/file/network operations inside?
+
+# Find repeated DB connections (should use connection pooling)
+grep -rn "connect\|Connection" src/ --include="*.py" | grep -v "test\|#"
 ```
 
 ---
@@ -235,25 +311,27 @@ grep -n "for.*in" src/*.py | head -20
 ## Step 6: Docker Resource Limits
 
 ```bash
-# Текущие лимиты контейнера
+# Current container limits
 docker inspect <container> | python3 -c "
 import json, sys
 data = json.load(sys.stdin)[0]
 hc = data['HostConfig']
-print('Memory limit:', hc.get('Memory', 0) // 1024 // 1024, 'MB')
-print('CPU quota:', hc.get('CpuQuota', 0))
-print('CPU period:', hc.get('CpuPeriod', 0))
+mem = hc.get('Memory', 0)
+print('Memory limit:', f'{mem // 1024 // 1024} MB' if mem else 'unlimited')
+print('CPU quota:', hc.get('CpuQuota', 0) or 'unlimited')
+print('CPU period:', hc.get('CpuPeriod', 0) or 'default')
+print('PID limit:', hc.get('PidsLimit', 0) or 'unlimited')
 "
 
-# История метрик (если есть)
-docker stats <container> --format "table {{.CPUPerc}}\t{{.MemUsage}}\t{{.NetIO}}"
+# Live metrics stream (Ctrl+C to stop)
+docker stats <container> --format "table {{.CPUPerc}}\t{{.MemUsage}}\t{{.MemPerc}}\t{{.NetIO}}\t{{.BlockIO}}"
 ```
 
-### Добавить лимиты в docker-compose.yml
+### Add limits in docker-compose.yml
 
 ```yaml
 services:
-  vectoros:
+  myservice:
     deploy:
       resources:
         limits:
@@ -261,22 +339,28 @@ services:
           cpus: '0.5'
         reservations:
           memory: 128M
+    # Also set Python-level memory controls
+    environment:
+      - PYTHONMALLOC=malloc  # better memory tracking with tracemalloc
 ```
 
 ---
 
 ## Step 7: Optimization Checklist
 
-После профилирования — применяй в порядке ROI:
+After profiling — apply fixes in order of ROI (highest impact, lowest effort first):
 
 ```
-□ Кэшировать результаты дорогих вызовов (lru_cache, Redis)
-□ Батчить DB запросы (убрать N+1)
-□ Lazy loading — не загружать vault целиком при каждом запросе
-□ Async I/O — заменить blocking calls на async (aiofiles, aiosqlite)
-□ Connection pooling — не создавать новое соединение на каждый запрос
-□ Индексы в SQLite — EXPLAIN QUERY PLAN покажет full scan
-□ Уменьшить размер context window — не грузить весь vault в каждый промпт
+[ ] Cache results of expensive calls (functools.lru_cache, Redis, dict cache with TTL)
+[ ] Batch DB queries (eliminate N+1)
+[ ] Lazy loading — do not load entire dataset on every request
+[ ] Async I/O — replace blocking calls with async (aiofiles, aiosqlite, aiohttp)
+[ ] Connection pooling — do not create a new connection per request
+[ ] Indexes in SQLite/PostgreSQL — EXPLAIN QUERY PLAN reveals full scans
+[ ] Reduce context/payload size — do not send everything every time
+[ ] Pre-compute / materialize — cache derived data instead of recalculating
+[ ] Compress large payloads (gzip for HTTP, compact formats for storage)
+[ ] Set memory limits on caches and collections (maxsize, TTL)
 ```
 
 ---
@@ -286,24 +370,27 @@ services:
 ```markdown
 # Performance Report — {service} — {DATE}
 
-## Симптомы
-{что наблюдалось}
+## Symptoms
+{what was observed, when it started}
 
-## Измерения (до)
-- Время ответа: Xms (p50), Xms (p95)
+## Measurements (before)
+- Response time: Xms (p50), Xms (p95)
 - Memory: X MB RSS
 - CPU: X% avg
 
-## Найденные узкие места
-| # | Функция/Компонент | Время/Память | Причина |
-|---|-------------------|--------------|---------|
-| 1 | ...               | ...          | ...     |
+## Bottlenecks Found
+| # | Function/Component | Time/Memory | Root Cause |
+|---|-------------------|-------------|------------|
+| 1 | ...               | ...         | ...        |
 
-## Изменения
+## Changes Made
 - ...
 
-## Измерения (после)
-- Время ответа: Xms (p50), Xms (p95)
+## Measurements (after)
+- Response time: Xms (p50), Xms (p95)
 - Memory: X MB RSS
-- Улучшение: X%
+- Improvement: X%
+
+## Remaining Issues
+- ... (if any, with estimated effort to fix)
 ```

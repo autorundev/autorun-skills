@@ -1,26 +1,27 @@
 ---
 name: architecture-review
-description: Universal architecture review skill. Audits system design for complexity, coupling, scalability, maintainability, and security posture. Works on any codebase — backend services, bots, APIs, infrastructure. Triggers on: "ревью архитектуры", "architecture review", "проверь архитектуру", "насколько хорошо спроектировано", "design review", "что не так с архитектурой", "технический долг", "overfitting к требованиям", "structural review".
+description: "Universal architecture review skill. Audits system design for complexity, coupling, scalability, maintainability, and security posture. Works on any codebase: backend services, bots, APIs, infrastructure. Triggers on: architecture review, design review, structural review, tech debt audit, coupling analysis, what is wrong with the architecture, how well is this designed, review the system design."
 ---
 
 # Architecture Review
 
-Универсальный аудит системного дизайна. Адаптируй глубину под размер проекта: для микросервиса — 20 мин, для полного стека — несколько часов.
+Universal system design audit. Adapt depth to project size: for a microservice — 20 min, for a full stack — several hours.
 
 ---
 
 ## Before You Start
 
-Прочитай перед запуском:
-- Главный CLAUDE.md проекта (структура, конвенции)
-- README / docs/INFRA.md / docs/SERVICES.md если есть
-- Основные entry points (main, router, bot handler)
-- `git log --oneline -20` — понять направление развития
+Read before launching:
+- Project's main CLAUDE.md (structure, conventions)
+- README / docs/INFRA.md / docs/SERVICES.md if they exist
+- Main entry points (main, router, bot handler)
+- `git log --oneline -20` — understand the development direction
+- Check for existing tests and CI configuration
 
-Задай себе три вопроса:
-1. Что система делает (одна фраза)?
-2. Каков главный инвариант (что никогда не должно сломаться)?
-3. Где самое страшное место (куда страшнее всего залезть)?
+Ask yourself three questions:
+1. What does the system do (one sentence)?
+2. What is the main invariant (what must never break)?
+3. Where is the scariest part (the place you are most afraid to touch)?
 
 ---
 
@@ -28,188 +29,218 @@ description: Universal architecture review skill. Audits system design for compl
 
 ### Step 1: Boundary Analysis
 
-**Что проверяем:** чёткость границ между компонентами.
+**What to check:** clarity of boundaries between components.
 
 ```
-□ Каждый модуль имеет одну ответственность?
-□ Зависимости направлены в одну сторону (нет циклов)?
-□ Публичный интерфейс минимален (не экспортируется лишнее)?
-□ Данные не утекают через границы (нет shared mutable state)?
+[ ] Each module has a single responsibility?
+[ ] Dependencies flow one way (no cycles)?
+[ ] Public interface is minimal (no unnecessary exports)?
+[ ] Data does not leak across boundaries (no shared mutable state)?
+[ ] Module boundaries align with domain boundaries?
 ```
 
-**Команды для анализа:**
+**Analysis commands:**
 ```bash
-# Python: найти циклические импорты
-python3 -c "import modulegraph" 2>/dev/null || pip install modulegraph -q
-# Или вручную:
+# Python: find circular imports
 grep -r "^from\|^import" src/ | sort | uniq -c | sort -rn | head -30
 
-# Найти God Objects (классы > 300 строк)
-find . -name "*.py" | xargs wc -l | sort -rn | head -20
+# Find God Objects (files > 300 lines)
+find . -name "*.py" -exec wc -l {} + | sort -rn | head -20
+
+# Count imports per file (high count = high coupling)
+for f in $(find . -name "*.py" -path "*/src/*"); do
+  echo "$(grep -c "^from\|^import" "$f") $f"
+done | sort -rn | head -20
 ```
 
 **Red flags:**
-- Модуль импортирует > 10 других модулей из того же проекта
-- Один файл > 500 строк
-- Класс делает и I/O, и бизнес-логику, и хранение
-- `utils.py` размером > 200 строк (свалка)
+- Module imports > 10 other modules from the same project
+- Single file > 500 lines
+- Class does I/O, business logic, AND storage
+- `utils.py` over 200 lines (junk drawer)
+- Circular imports between packages
 
 ---
 
 ### Step 2: Data Flow Review
 
-**Что проверяем:** как данные движутся через систему.
+**What to check:** how data moves through the system.
 
 ```
-□ Входная точка (user input / webhook / API) явно помечена?
-□ Данные валидируются на входе, не в середине пайплайна?
-□ Мутация данных происходит в одном месте?
-□ Нет скрытых сайд-эффектов в read-only операциях?
-□ Ошибки всплывают до вызывающего, не глотаются?
+[ ] Entry point (user input / webhook / API) is clearly marked?
+[ ] Data is validated at the entry point, not mid-pipeline?
+[ ] Data mutation happens in one place (single source of truth)?
+[ ] No hidden side effects in read-only operations?
+[ ] Errors propagate up to the caller, not swallowed silently?
+[ ] Serialization/deserialization happens at boundaries only?
 ```
 
-**Нарисуй схему (даже ASCII):**
+**Draw a diagram (even ASCII):**
 ```
-User → [Triage] → [Router] → [Module A] → [Vault] → [Response]
-                           ↘ [Module B] → [External API]
+User -> [Triage] -> [Router] -> [Module A] -> [DB] -> [Response]
+                             \-> [Module B] -> [External API]
 ```
 
 **Red flags:**
-- Нет единой точки валидации входных данных
-- `try: ... except: pass` без логирования
-- Функция с параметром `**kwargs` без документации
-- Глобальные переменные для состояния
+- No single point of input validation
+- `try: ... except: pass` without logging
+- Functions with `**kwargs` without documentation
+- Global variables for state
+- Data transformation scattered across multiple layers
 
 ---
 
 ### Step 3: Coupling & Cohesion
 
-**Что проверяем:** насколько компоненты независимы.
+**What to check:** how independent the components are.
 
 ```
-□ Можно ли заменить компонент A не трогая B?
-□ Тесты на A не требуют поднимать всю систему?
-□ Конфигурация передаётся, не захардкожена внутри?
-□ Внешние зависимости (DB, API) изолированы за интерфейсом?
+[ ] Can component A be replaced without touching B?
+[ ] Tests for A do not require spinning up the entire system?
+[ ] Configuration is injected, not hardcoded inside modules?
+[ ] External dependencies (DB, API) are isolated behind an interface?
+[ ] Shared data structures are immutable or explicitly owned?
 ```
 
-**Метрика связности (вручную):**
+**Coupling metric (manual):**
 ```bash
-# Сколько файлов надо изменить при переименовании ключевой сущности?
-grep -r "VaultRecord\|UserSession\|ClassName" src/ | wc -l
-# > 20 файлов → tight coupling
+# How many files must change when renaming a key entity?
+grep -r "YourEntity\|YourClass" src/ --include="*.py" -l | wc -l
+# > 20 files = tight coupling
+
+# Find which modules depend on a specific module
+grep -r "from src.module_name\|import module_name" src/ --include="*.py" -l
 ```
 
 **Red flags:**
-- Смена формата хранения требует правок в 5+ файлах
-- Нет абстракции над внешним API (прямые requests.get везде)
-- Тест создаёт реальные файлы/соединения без возможности mock
-- Конфигурация читается из os.environ в середине бизнес-логики
+- Changing storage format requires edits in 5+ files
+- No abstraction over external API (raw `requests.get` everywhere)
+- Test creates real files/connections without mock capability
+- Configuration read from `os.environ` in the middle of business logic
+- Shotgun surgery: one logical change requires touching many files
 
 ---
 
 ### Step 4: Scalability Posture
 
-**Что проверяем:** как система поведёт себя под нагрузкой или при росте.
+**What to check:** how the system will behave under load or growth.
 
 ```
-□ Нет N+1 запросов в циклах?
-□ Кэширование есть там где нужно?
-□ Блокирующие I/O не в горячем пути?
-□ Размер контекста/памяти ограничен (нет unbounded growth)?
-□ Есть таймауты на внешние вызовы?
+[ ] No N+1 queries in loops?
+[ ] Caching exists where needed?
+[ ] Blocking I/O is not in the hot path?
+[ ] Context/memory size is bounded (no unbounded growth)?
+[ ] Timeouts set on all external calls?
+[ ] Pagination/streaming for large data sets?
 ```
 
-**Команды:**
+**Commands:**
 ```bash
-# Найти потенциальные N+1 (запросы в цикле)
-grep -n "for.*in" src/*.py | head -20
-# Проверить каждый цикл — нет ли внутри db/api вызовов
+# Find potential N+1 (queries inside loops)
+grep -rn "for.*in" src/ --include="*.py" | head -20
+# Check each loop for db/api calls inside
 
-# Найти отсутствие таймаутов
-grep -r "requests.get\|httpx.get\|aiohttp" src/ | grep -v "timeout"
+# Find missing timeouts
+grep -r "requests\.\(get\|post\|put\|delete\)\|httpx\.\|aiohttp" src/ --include="*.py" | grep -v "timeout"
+
+# Find unbounded collections
+grep -rn "\.append\|\.extend\|\.add" src/ --include="*.py" | head -20
 ```
 
 **Red flags:**
 - `for item in all_items: db.query(item.id)` — N+1
-- `context = load_entire_vault()` без пагинации
-- `requests.get(url)` без timeout
-- Накопление логов/истории без ротации
+- `context = load_entire_db()` without pagination
+- `requests.get(url)` without timeout
+- Accumulating logs/history without rotation or eviction
+- In-memory caches without size limits or TTL
 
 ---
 
 ### Step 5: Operational Readiness
 
-**Что проверяем:** насколько система готова к production-эксплуатации.
+**What to check:** how ready the system is for production operation.
 
 ```
-□ Логи содержат достаточно для диагностики (но не секреты)?
-□ Ошибки не теряются (не глотаются в except)?
-□ Health check / smoke test существует?
-□ Graceful shutdown реализован?
-□ Секреты в env, не в коде?
-□ Backup / recovery задокументированы?
+[ ] Logs contain enough for diagnostics (but no secrets)?
+[ ] Errors are not lost (not swallowed in bare except)?
+[ ] Health check / smoke test exists?
+[ ] Graceful shutdown is implemented?
+[ ] Secrets in env vars, not in code?
+[ ] Backup / recovery is documented?
+[ ] Deployment is repeatable (not manual steps)?
+[ ] Monitoring / alerting covers critical paths?
 ```
 
-**Команды:**
+**Commands:**
 ```bash
-# Найти залогированные секреты
-grep -r "password\|token\|secret\|key" src/ | grep -v "env\|config\|test" | grep "log\|print"
+# Find logged secrets
+grep -r "password\|token\|secret\|api_key" src/ --include="*.py" | grep -v "env\|config\|test" | grep "log\|print"
 
-# Найти голые except без логирования
-grep -n "except:" src/*.py
+# Find bare except without logging
+grep -rn "except:" src/ --include="*.py"
 
-# Проверить наличие health check
-find . -name "*.py" | xargs grep -l "health\|ping\|status" 2>/dev/null
+# Check for health check endpoints
+grep -r "health\|ping\|status" src/ --include="*.py" -l
+
+# Check Docker restart policy
+grep -r "restart:" docker-compose*.yml 2>/dev/null
 ```
 
 **Red flags:**
-- `except Exception: pass` — ошибка исчезает
-- Токены/ключи в исходном коде
-- Нет документации "что делать если упало"
-- Docker без restart policy или healthcheck
+- `except Exception: pass` — error disappears silently
+- Tokens/keys in source code
+- No documentation for "what to do if it crashes"
+- Docker without restart policy or healthcheck
+- No structured logging (just `print()`)
 
 ---
 
 ### Step 6: Complexity Budget
 
-**Что проверяем:** не переусложнена ли система для своих задач.
+**What to check:** whether the system is over-engineered for its task.
 
 ```
-□ Каждая абстракция оправдана (есть 2+ использования)?
-□ Нет архитектуры "на будущее" без текущей необходимости?
-□ Новый разработчик поймёт систему за день?
-□ Количество слоёв соответствует сложности задачи?
+[ ] Every abstraction is justified (has 2+ usages or covers a known-future need)?
+[ ] No architecture "for the future" without current necessity or vision doc reference?
+[ ] A new developer can understand the system in a day?
+[ ] Number of layers matches task complexity?
+[ ] No premature optimization without profiling data?
 ```
 
-**Вопрос на засыпку:** если бы систему писали заново сейчас — какие решения не повторили бы?
+**Key question:** if you were building this system from scratch today, which decisions would you NOT repeat?
 
 **Red flags:**
-- Микросервисы для задачи одного человека
-- Event-driven система с одним потребителем
-- 4+ уровня абстракции для CRUD
-- "Это сложно, только я понимаю как это работает"
+- Microservices for a one-person project
+- Event-driven architecture with a single consumer
+- 4+ abstraction layers for CRUD
+- "It is complicated, only I understand how it works"
+- Framework/library choices that don't match the team size
 
 ---
 
 ### Step 7: Security Posture (High-Level)
 
-**Что проверяем:** базовая безопасность (глубокий аудит — отдельный скилл `vectoros-security-audit`).
+**What to check:** basic security (deep audit is a separate dedicated skill).
 
 ```
-□ Пользовательский ввод валидируется и санитизируется?
-□ Права минимальны (principle of least privilege)?
-□ Зависимости не устарели критично?
-□ Нет путей обхода авторизации?
+[ ] User input is validated and sanitized?
+[ ] Permissions are minimal (principle of least privilege)?
+[ ] Dependencies are not critically outdated?
+[ ] No authorization bypass paths?
+[ ] Sensitive data encrypted at rest and in transit?
+[ ] Rate limiting on public endpoints?
 ```
 
-**Команды:**
+**Commands:**
 ```bash
-# Python: проверить устаревшие зависимости с CVE
-pip-audit 2>/dev/null || pip install pip-audit -q && pip-audit
+# Python: check outdated dependencies with CVEs
+pip-audit 2>/dev/null || (pip install pip-audit -q && pip-audit)
 
-# Найти потенциальные injection точки
-grep -rn "eval\|exec\|os.system\|subprocess.shell=True" src/
+# Find potential injection points
+grep -rn "eval\|exec\|os\.system\|subprocess.*shell=True\|__import__" src/ --include="*.py"
+
+# Find SQL injection risks
+grep -rn "f\".*SELECT\|f\".*INSERT\|f\".*UPDATE\|\.format.*SELECT" src/ --include="*.py"
 ```
 
 ---
@@ -220,20 +251,20 @@ grep -rn "eval\|exec\|os.system\|subprocess.shell=True" src/
 # Architecture Review — {Project} — {DATE}
 
 ## TL;DR
-{2-3 предложения: что хорошо, что плохо, главный риск}
+{2-3 sentences: what is good, what is bad, main risk}
 
 ## Strengths
 - ...
 
 ## Critical Issues (fix before next release)
-| # | Проблема | Файл/Компонент | Рекомендация |
-|---|----------|----------------|--------------|
-| 1 | ...      | ...            | ...          |
+| # | Issue | File/Component | Recommendation |
+|---|-------|----------------|----------------|
+| 1 | ...   | ...            | ...            |
 
 ## Debt Items (fix in next sprint)
 - ...
 
-## Design Questions (обсудить с командой)
+## Design Questions (discuss with team)
 - ...
 
 ## Verdict
@@ -251,11 +282,13 @@ grep -rn "eval\|exec\|os.system\|subprocess.shell=True" src/
 
 ## Quick Heuristics
 
-| Симптом | Диагноз | Лечение |
-|---------|---------|---------|
-| "Не трогай этот файл, он магический" | High coupling / No tests | Изолировать за интерфейсом, покрыть тестами |
-| Функция > 100 строк | Missing decomposition | Разбить по Single Responsibility |
-| `utils.py` > 200 строк | Missing domain model | Сгруппировать по доменам |
-| Тест поднимает всю систему | Missing seams | Ввести dependency injection |
-| "Я добавлю это на будущее" | YAGNI violation | Удалить, добавить когда понадобится |
-| Изменение в одном месте ломает другое | Hidden coupling | Явные интерфейсы + тесты |
+| Symptom | Diagnosis | Treatment |
+|---------|-----------|-----------|
+| "Don't touch that file, it's magic" | High coupling / No tests | Isolate behind an interface, cover with tests |
+| Function > 100 lines | Missing decomposition | Split by Single Responsibility |
+| `utils.py` > 200 lines | Missing domain model | Group by domain |
+| Test spins up the whole system | Missing seams | Introduce dependency injection |
+| "I'll add this for the future" | YAGNI violation | Remove it, add when actually needed |
+| Change in one place breaks another | Hidden coupling | Explicit interfaces + tests |
+| Same logic in 3+ places | DRY violation | Extract shared function or module |
+| Config scattered across files | No single source of config | Centralize configuration |
