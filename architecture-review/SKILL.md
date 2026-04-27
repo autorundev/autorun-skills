@@ -9,6 +9,33 @@ Universal system design audit. Adapt depth to project size: for a microservice �
 
 ---
 
+## Two Modes
+
+**Single-pass (default):** orchestrator walks through all 7 steps below in one context. Best for small/medium projects (<50 files), or when you want a single coherent narrative.
+
+**Parallel multi-agent (for large projects or deep audits):** dispatch 3 sub-agents with different focuses, then consolidate. Use when codebase is too large for one context or when you want independent perspectives that can disagree.
+
+```
+Agent A — boundaries & coupling      (Steps 1, 3)
+Agent B — data flow & scalability    (Steps 2, 4)
+Agent C — operations & security      (Steps 5, 7)
+Orchestrator — Step 6 (complexity), consolidates findings, drafts the report
+```
+
+Each sub-agent gets: project root, relevant CLAUDE.md, list of entry points, and the steps they own from this skill. They return a markdown section ready for the final report. The orchestrator dedupes overlapping findings and resolves conflicts (e.g. one agent flags X as critical, another as nitpick — orchestrator decides).
+
+**When to pick parallel mode:**
+- Codebase >50 files or >10k LoC
+- User asks for "deep audit" / "thorough review"
+- Multiple subsystems with different concerns (e.g. backend + mini-app + infra)
+
+**When NOT to pick parallel mode:**
+- Single-file or small-component review
+- Quick sanity check ("does this design look right?")
+- User wants a fast verdict, not a comprehensive report
+
+---
+
 ## Before You Start
 
 Read before launching:

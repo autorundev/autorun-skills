@@ -33,12 +33,18 @@ git -C /home/anton/ernest worktree add ...
 **Requires:** `$PROJECT_ROOT` = absolute path to the project (e.g.: `/home/anton/ernest`)
 
 ```bash
-# Ensure .claude/worktrees/ is in .gitignore
-grep -q '.claude/worktrees/' $PROJECT_ROOT/.gitignore 2>/dev/null || echo '.claude/worktrees/' >> $PROJECT_ROOT/.gitignore
+# Safety: verify .claude/worktrees/ is actually ignored (covers wildcards, parent .gitignore, global ignore)
+if ! git -C $PROJECT_ROOT check-ignore -q .claude/worktrees/.test 2>/dev/null; then
+  echo '.claude/worktrees/' >> $PROJECT_ROOT/.gitignore
+  git -C $PROJECT_ROOT add .gitignore
+  git -C $PROJECT_ROOT commit -m "chore: ignore .claude/worktrees/" --no-verify
+fi
 
 # Create worktree with a dedicated branch
 git -C $PROJECT_ROOT worktree add $PROJECT_ROOT/.claude/worktrees/$ARGUMENTS -b worktree-$ARGUMENTS
 ```
+
+**Why `git check-ignore` instead of `grep`:** grep misses wildcard rules (e.g. `.claude/*`), inherited rules from parent `.gitignore`, and global gitignore. `git check-ignore` asks git directly — single source of truth. If the directory is not ignored, worktree contents leak into commits.
 
 After creation, tell the user:
 ```
